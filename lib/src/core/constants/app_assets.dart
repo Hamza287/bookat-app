@@ -5,6 +5,9 @@ class AppImages {
 
   static const onboarding = '$_basePath/onboarding.png';
   static const emptyBusinesses = '$_basePath/empty_businesses.png';
+
+  /// Brand mark, trimmed and keyed to transparency from `bookatlogo.jpeg`.
+  static const brandLogo = '$_basePath/bookat_logo.png';
 }
 
 class AppIcons {

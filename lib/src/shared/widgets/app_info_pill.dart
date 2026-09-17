@@ -10,9 +10,11 @@ class AppInfoPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.primaryLight,
+        color: colors.primaryLight,
         borderRadius: BorderRadius.circular(AppDimensions.radiusPill),
       ),
       child: Padding(
@@ -23,12 +25,12 @@ class AppInfoPill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: AppColors.primary),
+            Icon(icon, size: 16, color: colors.primary),
             const SizedBox(width: AppDimensions.spacingSm),
             Text(
               label,
-              style: const TextStyle(
-                color: AppColors.primaryDark,
+              style: TextStyle(
+                color: colors.primaryDark,
                 fontWeight: FontWeight.w700,
               ),
             ),

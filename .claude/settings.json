@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter test *)",
+      "Read(//tmp/**)",
+      "Bash(cd \"d:/tsg systems projects/bookat-app\" && sed -n '1,60p' /tmp/of.txt)",
+      "PowerShell(flutter test test/business_detail_page_test.dart 2>&1)",
+      "PowerShell(flutter test test/slot_duration_range_test.dart 2>&1)",
+      "PowerShell(flutter test test/slot_duration_range_test.dart --plain-name \"shows each slot\" 2>&1)",
+      "PowerShell(flutter analyze --no-pub lib/src/features/booking/presentation/pages/business_detail_page.dart 2>&1)",
+      "PowerShell(flutter test test/facility_map_and_date_picker_test.dart 2>&1)",
+      "PowerShell(flutter test test/booking_summary_total_test.dart 2>&1)",
+      "PowerShell(flutter test test/resource_price_extraction_test.dart 2>&1)",
+      "mcp__postman__getCollectionRequest",
+      "PowerShell(flutter analyze --no-pub lib/src/features/auth/presentation/pages/login_page.dart lib/src/shared/providers/ui_providers.dart 2>&1)",
+      "PowerShell(flutter test test/business_detail_page_test.dart test/slot_duration_range_test.dart test/facility_map_and_date_picker_test.dart test/business_reviews_test.dart test/booking_summary_total_test.dart test/resource_price_extraction_test.dart 2>&1)",
+      "PowerShell(flutter analyze --no-pub lib/src/features/business_admin/presentation/pages/business_settings_page.dart 2>&1)",
+      "PowerShell(flutter test test/business_settings_page_test.dart 2>&1)",
+      "PowerShell(flutter test test/business_settings_page_test.dart --plain-name \"shows all seven days\" 2>&1)",
+      "PowerShell(flutter analyze --no-pub lib/src/features/business_admin/presentation/pages/business_admin_home_page.dart 2>&1)",
+      "PowerShell(flutter analyze --no-pub \"lib/src/features/business_admin/presentation/pages/business_admin_home_page.dart\" 2>&1)",
+      "PowerShell($out = flutter analyze --no-pub \"lib/src/features/business_admin/presentation/pages/business_admin_home_page.dart\" 2>&1 | Out-String; $out -split \"`n\" | Where-Object { $_ -match \"error\" } | Select-Object -First 25; \"----\"; \\($out -split \"`n\" | Select-Object -Last 8\\) -join \"`n\")",
+      "PowerShell(flutter analyze --no-pub \"lib/src/features/booking/presentation/pages/business_detail_page.dart\" 2>&1)",
+      "PowerShell(flutter test \"test/facility_map_and_date_picker_test.dart\" --plain-name \"opens with no venue selected\" 2>&1)",
+      "PowerShell(flutter test \"test/facility_map_and_date_picker_test.dart\" 2>&1)",
+      "PowerShell(flutter analyze --no-pub 2>&1)",
+      "PowerShell(& \"C:\\\\Users\\\\DELL\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--tsg-systems-projects-bookat-app\\\\f943ea88-e25a-4b14-a993-f2a3fec566a7\\\\scratchpad\\\\make_logo.ps1\")",
+      "PowerShell(flutter pub get 2>&1)",
+      "PowerShell(dart run flutter_launcher_icons 2>&1)",
+      "PowerShell(dart run flutter_native_splash:create 2>&1)",
+      "PowerShell(flutter analyze --no-pub \"lib/src/features/booking/presentation/pages/home_page.dart\" \"lib/src/shared/widgets/app_brand_title.dart\" 2>&1)",
+      "PowerShell(dart run flutter_native_splash:remove 2>&1)",
+      "mcp__postman__searchPostmanElements",
+      "mcp__postman__getCollection",
+      "PowerShell($ProgressPreference='SilentlyContinue'; try { $r = Invoke-WebRequest -Uri \"https://api-bookat.tsgtech.co/api/businesses/search\" -UseBasicParsing -TimeoutSec 30; $r.Content.Substring\\(0, [Math]::Min\\(1200, $r.Content.Length\\)\\) } catch { \"ERR: $\\($_.Exception.Message\\)\" })",
+      "PowerShell($ProgressPreference='SilentlyContinue'; try { $r = Invoke-WebRequest -Uri \"https://api-bookat.tsgtech.co/api/reviews/business/d29b48f0-6317-4b40-9fb5-6612f5aa2108\" -UseBasicParsing -TimeoutSec 30; \"STATUS: $\\($r.StatusCode\\)\"; \"CT: $\\($r.Headers['Content-Type']\\)\"; \"BODY:\"; $r.Content.Substring\\(0, [Math]::Min\\(2000, $r.Content.Length\\)\\) } catch { \"ERR: $\\($_.Exception.Message\\)\"; if \\($_.Exception.Response\\) { $sr = New-Object System.IO.StreamReader\\($_.Exception.Response.GetResponseStream\\(\\)\\); \"BODY: \" + $sr.ReadToEnd\\(\\) } })",
+      "PowerShell($ProgressPreference='SilentlyContinue'; $r = Invoke-WebRequest -Uri \"https://api-bookat.tsgtech.co/api/businesses/search\" -UseBasicParsing -TimeoutSec 30; $j = $r.Content | ConvertFrom-Json; foreach \\($b in $j\\) { \"$\\($b.id\\)  $\\($b.name\\)\" })",
+      "PowerShell($ProgressPreference='SilentlyContinue'; foreach \\($id in @\\(\"08ac5318-7fb7-4575-860e-fb3c99173fb5\"\\)\\) { $r = Invoke-WebRequest -Uri \"https://api-bookat.tsgtech.co/api/reviews/business/$id\" -UseBasicParsing -TimeoutSec 30; \"== $id\"; $r.Content })",
+      "PowerShell(flutter test \"test/reviews_response_shape_test.dart\" 2>&1)"
+    ]
+  }
+}

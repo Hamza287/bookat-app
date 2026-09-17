@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1031911403777",
+    "project_id": "bookat-mobileapp",
+    "storage_bucket": "bookat-mobileapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1031911403777:android:8fe4b51c1b007a6c74eb00",
+        "android_client_info": {
+          "package_name": "com.bookat.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCvZ_8NsLV7qUfa6nC5TKBZlJL1wL9YdRs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1031911403777:android:85aed1ce304a5d2174eb00",
+        "android_client_info": {
+          "package_name": "com.example.bookat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCvZ_8NsLV7qUfa6nC5TKBZlJL1wL9YdRs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

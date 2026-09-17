@@ -1,7 +1,7 @@
 name: bookat
 description: "A Flutter booking app for services, companies, and slot reservations."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.10.4
@@ -12,13 +12,20 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   dio: ^5.7.0
-  get_it: ^8.0.3
+  equatable: ^2.0.7
+  firebase_core: ^4.1.1
+  firebase_messaging: ^16.0.2
+  flutter_riverpod: ^2.6.1
+  image_picker: ^1.1.2
+  shared_preferences: ^2.3.5
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.4
 
 flutter:
   uses-material-design: true
@@ -26,3 +33,36 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+
+# Launcher icons are generated from the brand mark with
+# `dart run flutter_launcher_icons`. The sources live in tool/branding/ so they
+# are not shipped inside the app bundle.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: tool/branding/app_icon.png
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: tool/branding/app_icon_foreground.png
+
+# Native splash screen, generated with `dart run flutter_native_splash:create`.
+#
+# Deliberately white in every case rather than light/dark: the native splash can
+# only key off the OS dark-mode setting, while the app's own theme is a stored
+# preference (see ThemeModeController) that defaults to light and ignores the
+# system. A dark splash would therefore show on a system-dark device that then
+# opens the app in light mode. Once Flutter is up, _AppLoadingPage takes over and
+# does follow the real theme.
+flutter_native_splash:
+  color: "#FFFFFF"
+  # Mark with the "bookat" wordmark stacked beneath it.
+  image: tool/branding/splash_stack.png
+  android_12:
+    # Android 12+ masks the splash icon to a circle and always pins its separate
+    # `branding` image to the bottom of the screen — so to sit the wordmark
+    # directly under the mark it has to live inside the icon itself. This is the
+    # same lockup, scaled by its diagonal to stay within the unmasked circle.
+    image: tool/branding/splash_stack_android12.png
+    color: "#FFFFFF"
+  android: true
+  ios: true

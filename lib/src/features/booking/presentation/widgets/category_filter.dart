@@ -1,70 +1,77 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/constants.dart';
-import '../../../../shared/models/category_item.dart';
+import '../../domain/entities/business_category.dart';
+import '../providers/booking_providers.dart';
 
-class CategoryFilter extends StatelessWidget {
+class CategoryFilter extends ConsumerWidget {
   const CategoryFilter({super.key});
 
-  static const _categories = [
-    CategoryItem(label: AppStrings.categoryAll, icon: AppMaterialIcons.all),
-    CategoryItem(
-      label: AppStrings.categoryHealth,
-      icon: AppMaterialIcons.health,
-    ),
-    CategoryItem(
-      label: AppStrings.categoryBeauty,
-      icon: AppMaterialIcons.beauty,
-    ),
-    CategoryItem(
-      label: AppStrings.categoryRepair,
-      icon: AppMaterialIcons.repair,
-    ),
-    CategoryItem(
-      label: AppStrings.categoryCreative,
-      icon: AppMaterialIcons.creative,
-    ),
-  ];
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final categories = ref.watch(businessCategoriesProvider);
+    final selectedCategory = ref.watch(selectedCategoryProvider);
+    final colors = context.appColors;
+
+    // A category fetch failing (or still loading) shouldn't block browsing —
+    // fall back to just the "All" chip rather than erroring the whole row.
+    final chips = categories.maybeWhen(
+      data: (data) => data,
+      orElse: () => const <BusinessCategory>[],
+    );
+
     return SizedBox(
       height: AppDimensions.categoryFilterHeight,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: _categories.length,
+        itemCount: chips.length + 1,
         separatorBuilder: (_, _) => const SizedBox(
           width: AppDimensions.spacingSm,
         ),
         itemBuilder: (context, index) {
-          final category = _categories[index];
-          final isSelected = index == 0;
+          final isAll = index == 0;
+          final value = isAll ? '' : chips[index - 1].value;
+          final label = isAll ? AppStrings.categoryAll : chips[index - 1].label;
+          final isSelected = value == selectedCategory;
 
           return FilterChip(
             selected: isSelected,
             showCheckmark: false,
             avatar: Icon(
-              category.icon,
+              isAll ? AppMaterialIcons.all : _iconFor(value),
               size: 18,
-              color: isSelected ? AppColors.textOnPrimary : AppColors.primary,
+              color: isSelected ? colors.textOnPrimary : colors.primary,
             ),
-            label: Text(category.label),
+            label: Text(label),
             labelStyle: TextStyle(
-              color: isSelected ? AppColors.textOnPrimary : AppColors.textPrimary,
+              color: isSelected ? colors.textOnPrimary : colors.textPrimary,
               fontWeight: FontWeight.w700,
             ),
-            backgroundColor: AppColors.surface,
-            selectedColor: AppColors.primary,
+            backgroundColor: colors.surface,
+            selectedColor: colors.primary,
             side: BorderSide(
-              color: isSelected ? AppColors.primary : AppColors.border,
+              color: isSelected ? colors.primary : colors.border,
             ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(AppDimensions.radiusPill),
             ),
-            onSelected: (_) {},
+            onSelected: (_) {
+              ref.read(selectedCategoryProvider.notifier).state = value;
+            },
           );
         },
       ),
     );
+  }
+
+  IconData _iconFor(String value) {
+    return switch (value.toUpperCase()) {
+      'SALON' || 'BEAUTY' => AppMaterialIcons.beauty,
+      'CLINIC' || 'HEALTH' || 'HOSPITAL' => AppMaterialIcons.health,
+      'REPAIR' || 'AUTO' => AppMaterialIcons.repair,
+      'STUDIO' || 'CREATIVE' || 'PHOTOGRAPHY' => AppMaterialIcons.creative,
+      _ => AppMaterialIcons.category,
+    };
   }
 }

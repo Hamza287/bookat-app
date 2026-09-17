@@ -1,3 +1,4 @@
+import '../../../../core/utils/result.dart';
 import '../entities/business.dart';
 import '../repositories/booking_repository.dart';
 
@@ -6,7 +7,10 @@ class SearchBusinesses {
 
   final BookingRepository _repository;
 
-  Future<List<Business>> call() {
-    return _repository.searchBusinesses();
+  Future<Result<List<Business>>> call({
+    String query = '',
+    String category = '',
+  }) {
+    return _repository.searchBusinesses(query: query, category: category);
   }
 }

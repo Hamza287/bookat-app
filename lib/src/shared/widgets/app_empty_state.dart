@@ -15,6 +15,7 @@ class AppEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final colors = context.appColors;
 
     return Center(
       child: Padding(
@@ -23,14 +24,14 @@ class AppEmptyState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 36, color: AppColors.textSecondary),
+              Icon(icon, size: 36, color: colors.textSecondary),
               const SizedBox(height: AppDimensions.spacingMd),
             ],
             Text(
               message,
               textAlign: TextAlign.center,
               style: textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
+                color: colors.textSecondary,
               ),
             ),
           ],
