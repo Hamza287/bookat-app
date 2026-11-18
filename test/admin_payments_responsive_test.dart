@@ -113,7 +113,9 @@ void main() {
         // The admin shell reads the persisted theme on build.
         sharedPreferencesProvider.overrideWithValue(preferences),
         authControllerProvider.overrideWith(() => _StubAuth(session)),
-        businessPaymentsProvider.overrideWith((ref) async => payments()),
+        businessPaymentsForMonthProvider.overrideWith(
+          () => _StubPaymentsNotifier(payments()),
+        ),
         // The tabs live in an IndexedStack, so every sibling builds too.
         // Without these the test would fire real requests at the live API.
         businessStatsProvider.overrideWith((ref) async => stats()),
@@ -207,4 +209,14 @@ class _StubAuth extends AuthController {
 
   @override
   Future<AuthSession?> build() async => _session;
+}
+
+/// Serves the same fixed month whichever month is asked for.
+class _StubPaymentsNotifier extends BusinessPaymentsNotifier {
+  _StubPaymentsNotifier(this._payments);
+
+  final BusinessPayments _payments;
+
+  @override
+  Future<BusinessPayments> build(DateTime month) async => _payments;
 }

@@ -402,6 +402,19 @@ class DioBusinessAdminRemoteDataSource
   }
 
   @override
+  Future<void> updateBookingStatus({
+    required String bookingId,
+    required String accessToken,
+    required String status,
+  }) async {
+    await _apiClient.patch(
+      ApiEndpoints.bookingStatus(bookingId),
+      headers: {"Authorization": "Bearer $accessToken"},
+      data: {"status": status},
+    );
+  }
+
+  @override
   Future<void> createManualBooking({
     required String accessToken,
     required Map<String, dynamic> body,
@@ -444,6 +457,22 @@ class DioBusinessAdminRemoteDataSource
       ApiEndpoints.paymentStatus(paymentId),
       headers: {'Authorization': 'Bearer $accessToken'},
       data: {'status': status},
+    );
+  }
+
+  @override
+  Future<void> bulkUpdatePaymentStatus({
+    required List<String> paymentIds,
+    required String accessToken,
+    required String status,
+  }) async {
+    await _apiClient.patch(
+      ApiEndpoints.paymentsBulkStatus,
+      headers: {'Authorization': 'Bearer $accessToken'},
+      data: {
+        'paymentIds': paymentIds,
+        'status': status,
+      },
     );
   }
 

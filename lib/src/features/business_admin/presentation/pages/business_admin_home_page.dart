@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -6,9 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/constants/constants.dart';
+import '../../../../core/enums/app_enums.dart';
 import '../../../../app/theme_mode_provider.dart';
 import '../../../../shared/widgets/widgets.dart';
 import '../../../../core/errors/failure.dart';
+import '../../../../core/utils/app_resume_detector.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../booking/domain/entities/business.dart';
 import '../../../booking/domain/entities/my_booking.dart';
@@ -31,6 +34,8 @@ final _adminTabProvider = StateProvider.autoDispose<int>((_) => 0);
 
 class _BusinessAdminHomePageState extends ConsumerState<BusinessAdminHomePage>
     with WidgetsBindingObserver {
+  final _resumeDetector = AppResumeDetector();
+
   @override
   void initState() {
     super.initState();
@@ -46,9 +51,13 @@ class _BusinessAdminHomePageState extends ConsumerState<BusinessAdminHomePage>
   /// Bookings can be made from the web dashboard or by customers while the
   /// owner has the app in the background, so coming back to the foreground
   /// re-reads the day rather than showing whatever was on screen last.
+  ///
+  /// Only a genuine return from the background counts — see
+  /// [AppResumeDetector]. Reloading on every `resumed` meant pulling down the
+  /// notification shade refetched the whole dashboard.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) {
+    if (!_resumeDetector.didReturnFromBackground(state)) {
       return;
     }
 
@@ -59,7 +68,14 @@ class _BusinessAdminHomePageState extends ConsumerState<BusinessAdminHomePage>
 
     ref.invalidate(businessBookingsProvider(business.id));
     ref.invalidate(businessStatsProvider);
-    ref.invalidate(businessPaymentsForMonthProvider);
+
+    // Refreshed in place rather than invalidated, so the payments tab picks up
+    // new rows without blanking to a skeleton.
+    final monthKey = paymentsMonthKey(ref.read(paymentsMonthProvider));
+    unawaited(
+      ref.read(businessPaymentsForMonthProvider(monthKey).notifier)
+          .refreshQuietly(),
+    );
   }
 
   @override
@@ -253,13 +269,7 @@ class _AdminOverviewPage extends ConsumerWidget {
                   final link = 'https://bookat.tsgtech.co/b/${business.slug}';
                   await Clipboard.setData(ClipboardData(text: link));
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Link copied to clipboard: $link'),
-                        backgroundColor: colors.primary,
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
+                    AppTopAlert.show(context, 'Link copied to clipboard: $link');
                   }
                 },
                 isExpanded: true,
@@ -787,19 +797,11 @@ class _AddBookingSheetState extends ConsumerState<_AddBookingSheet> {
     }
 
     Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text(AppStrings.bookingCreatedForCustomer)),
-    );
+    AppTopAlert.show(context, AppStrings.bookingCreatedForCustomer);
   }
 
   void _showMessage(String message, {bool isError = false}) {
-    final colors = context.appColors;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? colors.error : colors.primary,
-      ),
-    );
+    AppTopAlert.show(context, message, isError: isError);
   }
 }
 
@@ -1050,10 +1052,27 @@ num _resourceBasePrice(BusinessResource resource) {
       0;
 }
 
-/// Methods the owner can settle a payment against. The server accepts any
-/// string, but these are the four the revenue breakdown reports on, so offering
-/// anything else would produce a payment that never shows up in the totals.
-const _paymentMethods = <String>['CASH', 'ONLINE', 'CARD', 'BANK_TRANSFER'];
+/// Methods the owner can settle a payment against: [PaymentMethod]'s four.
+///
+/// The server accepts any string, but these are the ones the revenue
+/// breakdown reports on, so anything else would produce a payment that never
+/// shows up in the totals.
+final _paymentMethods = PaymentMethod.values
+    .map((method) => method.value)
+    .toList(growable: false);
+
+/// Payments ticked for settling together. Empty means no selection, which is
+/// also what takes the screen out of selection mode.
+final _selectedPaymentIdsProvider =
+    StateProvider.autoDispose<Set<String>>((_) => const {});
+
+/// Method chosen for the whole selection, before "Mark as Paid" is pressed.
+final _bulkPaymentMethodProvider = StateProvider.autoDispose<String>(
+  (_) => PaymentMethod.cash.value,
+);
+
+/// True while the bulk request is in flight.
+final _settlingSelectionProvider = StateProvider.autoDispose<bool>((_) => false);
 
 /// Method chosen per payment row, before "Mark as Paid" is pressed. Keyed by
 /// payment id so two rows can be staged independently.
@@ -1072,65 +1091,309 @@ class _AdminPaymentsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final paymentsState = ref.watch(businessPaymentsProvider);
     final month = ref.watch(paymentsMonthProvider);
+    final monthKey = paymentsMonthKey(month);
+
+    // Watched directly, not through a wrapper that awaits its future: an
+    // in-place settle must reach the screen as data, never as a reload.
+    final paymentsState = ref.watch(businessPaymentsForMonthProvider(monthKey));
     final currency = business.settings.currency;
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        ref.invalidate(businessPaymentsProvider);
-        await ref.read(businessPaymentsProvider.future);
-      },
-      child: ListView(
-        padding: const EdgeInsets.all(AppDimensions.spacingXl),
-        children: [
-          _AdminHeader(
-            title: AppStrings.payments,
-            subtitle: AppStrings.trackPayments,
-            business: business,
-          ),
-          const SizedBox(height: AppDimensions.spacingLg),
-          _PaymentsMonthSwitcher(
-            month: month,
-            onChanged: (value) =>
-                ref.read(paymentsMonthProvider.notifier).state = value,
-          ),
-          const SizedBox(height: AppDimensions.spacingLg),
-          paymentsState.when(
-            loading: () => const _AdminBookingsLoading(),
-            error: (error, _) => AppEmptyState(
-              message: error is Failure
-                  ? error.message
-                  : AppStrings.paymentsLoadError,
-              icon: Icons.credit_card_off_rounded,
-            ),
-            data: (payments) => Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    // Ticked rows belong to the month they were ticked in, so moving months
+    // drops the selection rather than carrying ids that are no longer listed.
+    ref.listen(paymentsMonthProvider, (_, _) {
+      ref.read(_selectedPaymentIdsProvider.notifier).state = const {};
+    });
+
+    final pendingIds = paymentsState.valueOrNull?.payments
+            .where((payment) => payment.isPending)
+            .map((payment) => payment.id)
+            .toSet() ??
+        const <String>{};
+
+    // Intersected with what is actually on screen: a row settled since it was
+    // ticked must not be counted or sent again.
+    final selectedIds =
+        ref.watch(_selectedPaymentIdsProvider).intersection(pendingIds);
+
+    return Column(
+      children: [
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(businessPaymentsForMonthProvider(monthKey));
+              await ref.read(
+                businessPaymentsForMonthProvider(monthKey).future,
+              );
+            },
+            child: ListView(
+              padding: const EdgeInsets.all(AppDimensions.spacingXl),
               children: [
-                _PaymentStatsGrid(stats: payments.stats, currency: currency),
-                const SizedBox(height: AppDimensions.spacingLg),
-                _PaymentMethodBreakdown(
-                  stats: payments.stats,
-                  currency: currency,
+                _AdminHeader(
+                  title: AppStrings.payments,
+                  subtitle: AppStrings.trackPayments,
+                  business: business,
                 ),
                 const SizedBox(height: AppDimensions.spacingLg),
-                if (payments.payments.isEmpty)
-                  const _Panel(
-                    child: AppEmptyState(
-                      message: AppStrings.noPaymentsForMonth,
-                      icon: Icons.receipt_long_rounded,
-                    ),
-                  )
-                else
-                  for (final payment in payments.payments) ...[
-                    _PaymentCard(payment: payment, currency: currency),
-                    const SizedBox(height: AppDimensions.spacingMd),
-                  ],
+                _PaymentsMonthSwitcher(
+                  month: month,
+                  onChanged: (value) =>
+                      ref.read(paymentsMonthProvider.notifier).state = value,
+                ),
+                const SizedBox(height: AppDimensions.spacingLg),
+                paymentsState.when(
+                  loading: () => const _AdminBookingsLoading(),
+                  error: (error, _) => AppEmptyState(
+                    message: error is Failure
+                        ? error.message
+                        : AppStrings.paymentsLoadError,
+                    icon: Icons.credit_card_off_rounded,
+                  ),
+                  data: (payments) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _PaymentStatsGrid(
+                        stats: payments.stats,
+                        currency: currency,
+                      ),
+                      const SizedBox(height: AppDimensions.spacingLg),
+                      _PaymentMethodBreakdown(
+                        stats: payments.stats,
+                        currency: currency,
+                      ),
+                      const SizedBox(height: AppDimensions.spacingLg),
+                      if (payments.payments.isEmpty)
+                        const _Panel(
+                          child: AppEmptyState(
+                            message: AppStrings.noPaymentsForMonth,
+                            icon: Icons.receipt_long_rounded,
+                          ),
+                        )
+                      else ...[
+                        if (pendingIds.isNotEmpty) ...[
+                          _PaymentSelectionHeader(
+                            pendingIds: pendingIds,
+                            selectedCount: selectedIds.length,
+                          ),
+                          const SizedBox(height: AppDimensions.spacingMd),
+                        ],
+                        for (final payment in payments.payments) ...[
+                          _PaymentCard(
+                            payment: payment,
+                            currency: currency,
+                            isSelected: selectedIds.contains(payment.id),
+                          ),
+                          const SizedBox(height: AppDimensions.spacingMd),
+                        ],
+                      ],
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
-        ],
+        ),
+        if (selectedIds.isNotEmpty)
+          _BulkSettleBar(selectedIds: selectedIds, currency: currency),
+      ],
+    );
+  }
+}
+
+/// "3 of 7 selected", with a one-tap select-all.
+///
+/// Only pending rows can be ticked — a payment already settled has nothing to
+/// settle, so including it would send ids the server would reject.
+class _PaymentSelectionHeader extends ConsumerWidget {
+  const _PaymentSelectionHeader({
+    required this.pendingIds,
+    required this.selectedCount,
+  });
+
+  final Set<String> pendingIds;
+  final int selectedCount;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.appColors;
+    final allSelected = selectedCount == pendingIds.length;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            selectedCount == 0
+                ? AppStrings.pendingPaymentsCount(pendingIds.length)
+                : AppStrings.paymentsSelectedCount(
+                    selectedCount,
+                    pendingIds.length,
+                  ),
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: colors.textSecondary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        TextButton.icon(
+          onPressed: () {
+            ref.read(_selectedPaymentIdsProvider.notifier).state =
+                allSelected ? const {} : pendingIds;
+          },
+          icon: Icon(
+            allSelected
+                ? Icons.remove_done_rounded
+                : Icons.done_all_rounded,
+            size: 18,
+          ),
+          label: Text(
+            allSelected ? AppStrings.clearSelection : AppStrings.selectAll,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The bar that appears once rows are ticked: pick one method for the batch,
+/// then settle them in a single request.
+class _BulkSettleBar extends ConsumerWidget {
+  const _BulkSettleBar({required this.selectedIds, required this.currency});
+
+  final Set<String> selectedIds;
+  final String currency;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.appColors;
+    final method = ref.watch(_bulkPaymentMethodProvider);
+    final isSettling = ref.watch(_settlingSelectionProvider);
+
+    return Material(
+      color: colors.surface,
+      elevation: 12,
+      shadowColor: colors.shadow,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.all(AppDimensions.spacingLg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      AppStrings.markSelectedPaid(selectedIds.length),
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: colors.textPrimary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: AppStrings.clearSelection,
+                    onPressed: isSettling
+                        ? null
+                        : () =>
+                              ref
+                                      .read(
+                                        _selectedPaymentIdsProvider.notifier,
+                                      )
+                                      .state =
+                                  const {},
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppDimensions.spacingSm),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final methodField = DropdownButtonFormField<String>(
+                    initialValue: method,
+                    isExpanded: true,
+                    items: [
+                      for (final value in _paymentMethods)
+                        DropdownMenuItem(
+                          value: value,
+                          child: Text(_titleCaseEnum(value)),
+                        ),
+                    ],
+                    onChanged: isSettling
+                        ? null
+                        : (value) {
+                            if (value == null) {
+                              return;
+                            }
+                            ref
+                                    .read(_bulkPaymentMethodProvider.notifier)
+                                    .state =
+                                value;
+                          },
+                    decoration: const InputDecoration(isDense: true),
+                  );
+
+                  final payButton = AppButton(
+                    label: AppStrings.markAsPaid,
+                    isLoading: isSettling,
+                    onPressed: isSettling
+                        ? null
+                        : () => _settleSelection(context, ref, method),
+                    isExpanded: true,
+                  );
+
+                  if (constraints.maxWidth < 320) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        methodField,
+                        const SizedBox(height: AppDimensions.spacingMd),
+                        payButton,
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(child: methodField),
+                      const SizedBox(width: AppDimensions.spacingMd),
+                      Expanded(child: payButton),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
       ),
+    );
+  }
+
+  Future<void> _settleSelection(
+    BuildContext context,
+    WidgetRef ref,
+    String method,
+  ) async {
+    final ids = selectedIds.toList(growable: false);
+    ref.read(_settlingSelectionProvider.notifier).state = true;
+
+    final error = await ref
+        .read(businessAdminActionControllerProvider)
+        .settlePayments(paymentIds: ids, method: method);
+
+    ref.read(_settlingSelectionProvider.notifier).state = false;
+    if (error == null) {
+      ref.read(_selectedPaymentIdsProvider.notifier).state = const {};
+    }
+
+    if (!context.mounted) {
+      return;
+    }
+
+    AppTopAlert.show(
+      context,
+      error ?? AppStrings.paymentsMarkedPaid(ids.length),
+      isError: error != null,
     );
   }
 }
@@ -1349,10 +1612,17 @@ class _PaymentMethodBreakdown extends StatelessWidget {
 }
 
 class _PaymentCard extends ConsumerWidget {
-  const _PaymentCard({required this.payment, required this.currency});
+  const _PaymentCard({
+    required this.payment,
+    required this.currency,
+    this.isSelected = false,
+  });
 
   final BusinessPayment payment;
   final String currency;
+
+  /// Ticked for settling with the rest of the selection.
+  final bool isSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1360,15 +1630,15 @@ class _PaymentCard extends ConsumerWidget {
     final drafts = ref.watch(_paymentMethodDraftProvider);
     final settlingId = ref.watch(_settlingPaymentIdProvider);
     final isSettling = settlingId == payment.id;
+    final isSettlingSelection = ref.watch(_settlingSelectionProvider);
 
     // The stored method (`VENUE` for pay-at-venue bookings) is not one of the
-    // settle options, so fall back to the first rather than feeding the
-    // dropdown a value it has no item for.
+    // settle options, so fall back to cash rather than feeding the dropdown a
+    // value it has no item for.
     final selectedMethod =
         drafts[payment.id] ??
-        (_paymentMethods.contains(payment.method.toUpperCase())
-            ? payment.method.toUpperCase()
-            : _paymentMethods.first);
+        PaymentMethod.tryParse(payment.method)?.value ??
+        PaymentMethod.cash.value;
 
     return _Panel(
       child: Column(
@@ -1377,6 +1647,20 @@ class _PaymentCard extends ConsumerWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Only pending rows can be ticked: a settled payment has nothing
+              // left to settle, so it carries no checkbox at all.
+              if (payment.isPending) ...[
+                // Left to size itself: boxing it smaller would clip the tap
+                // target below the 48px minimum and make it hard to hit.
+                Checkbox(
+                  value: isSelected,
+                  visualDensity: VisualDensity.compact,
+                  onChanged: isSettling || isSettlingSelection
+                      ? null
+                      : (checked) => _toggleSelected(ref, checked ?? false),
+                ),
+                const SizedBox(width: AppDimensions.spacingSm),
+              ],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1515,6 +1799,18 @@ class _PaymentCard extends ConsumerWidget {
     );
   }
 
+  void _toggleSelected(WidgetRef ref, bool selected) {
+    ref.read(_selectedPaymentIdsProvider.notifier).update((current) {
+      final next = {...current};
+      if (selected) {
+        next.add(payment.id);
+      } else {
+        next.remove(payment.id);
+      }
+      return next;
+    });
+  }
+
   Future<void> _settle(
     BuildContext context,
     WidgetRef ref,
@@ -1534,12 +1830,10 @@ class _PaymentCard extends ConsumerWidget {
       return;
     }
 
-    final colors = context.appColors;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(error ?? AppStrings.paymentMarkedPaid),
-        backgroundColor: error == null ? colors.primary : colors.error,
-      ),
+    AppTopAlert.show(
+      context,
+      error ?? AppStrings.paymentMarkedPaid,
+      isError: error != null,
     );
   }
 }
@@ -1598,12 +1892,7 @@ class _AdminVenuesPageState extends ConsumerState<_AdminVenuesPage> {
           ),
           const SizedBox(height: AppDimensions.spacingLg),
           _AdminSegmentedTabs(
-            labels: const [
-              'Venues',
-              'Categories',
-              'Exceptions',
-              'Map Configuration',
-            ],
+            labels: const ['Venues', 'Categories', 'Exceptions'],
             selectedIndex: selectedTab,
             onChanged: (index) =>
                 ref.read(_adminVenuesTabProvider.notifier).state = index,
@@ -1674,10 +1963,8 @@ class _AdminVenuesPageState extends ConsumerState<_AdminVenuesPage> {
                 ),
               ),
             ),
-          ] else if (selectedTab == 2) ...[
-            Expanded(child: _AdminExceptionsView(business: business)),
           ] else ...[
-            Expanded(child: _VenueMapBuilderWidget(business: business)),
+            Expanded(child: _AdminExceptionsView(business: business)),
           ],
         ],
       ),
@@ -2150,10 +2437,12 @@ class _AdminBookingsTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final total = bookings.fold<num>(
-      0,
-      (sum, booking) => sum + booking.totalPrice,
-    );
+    // Cancelled bookings stay visible in the list below — the owner still wants
+    // to see them — but they earned nothing, so they are left out of the day's
+    // takings.
+    final total = bookings
+        .where((booking) => !booking.isCancelled)
+        .fold<num>(0, (sum, booking) => sum + booking.totalPrice);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2271,7 +2560,8 @@ class _AdminBookingCard extends ConsumerWidget {
                             ),
                       ),
                     ),
-                    _StatusChip(label: booking.status),
+                    const SizedBox(width: AppDimensions.spacingSm),
+                    _BookingStatusMenu(booking: booking),
                   ],
                 ),
                 const SizedBox(height: AppDimensions.spacingSm),
@@ -2826,9 +3116,7 @@ class _VenueCard extends ConsumerWidget {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: colors.error),
-      );
+      AppTopAlert.show(context, error, isError: true);
       return;
     }
 
@@ -2837,12 +3125,7 @@ class _VenueCard extends ConsumerWidget {
     if (!context.mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$venueName deleted.'),
-        backgroundColor: colors.primary,
-      ),
-    );
+    AppTopAlert.show(context, '$venueName deleted.');
   }
 }
 
@@ -3339,12 +3622,7 @@ class _AdminExceptionsView extends ConsumerWidget {
                                       )
                                       .deleteScheduleException(item.id);
                                   if (err != null && context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(err),
-                                        backgroundColor: colors.error,
-                                      ),
-                                    );
+                                    AppTopAlert.show(context, err, isError: true);
                                   } else {
                                     ref.invalidate(
                                       scheduleExceptionsProvider(business.id),
@@ -3707,15 +3985,9 @@ class _AddExceptionSheetState extends ConsumerState<_AddExceptionSheet> {
   }
 
   Future<void> _save() async {
-    final colors = context.appColors;
     final selectedResourceId = ref.read(_exceptionResourceIdProvider);
     if (selectedResourceId == null || selectedResourceId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Please select a resource.'),
-          backgroundColor: colors.error,
-        ),
-      );
+      AppTopAlert.show(context, 'Please select a resource.', isError: true);
       return;
     }
 
@@ -3747,527 +4019,13 @@ class _AddExceptionSheetState extends ConsumerState<_AddExceptionSheet> {
     ref.read(_exceptionIsSubmittingProvider.notifier).state = false;
 
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: colors.error),
-      );
+      AppTopAlert.show(context, error, isError: true);
     } else {
       ref.invalidate(scheduleExceptionsProvider(widget.businessId));
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Schedule exception created successfully.'),
-          backgroundColor: colors.primary,
-        ),
-      );
+      AppTopAlert.show(context, 'Schedule exception created successfully.');
     }
   }
-}
-
-/// User-dragged overrides for venue map boxes. Anything not present here falls
-/// back to the deterministic grid position computed during build.
-final _venueMapPositionsProvider =
-    StateProvider.autoDispose<Map<String, Offset>>(
-      (_) => const <String, Offset>{},
-    );
-
-class _VenueMapBuilderWidget extends ConsumerWidget {
-  const _VenueMapBuilderWidget({required this.business});
-
-  final Business business;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colors = context.appColors;
-    final resourcesState = ref.watch(businessResourcesProvider(business.id));
-    final List<BusinessResource> resources =
-        resourcesState.valueOrNull ?? business.resources;
-
-    // Group into parent venues (no parentId) and child venues (has parentId)
-    final List<BusinessResource> parentResources = <BusinessResource>[
-      for (final r in resources)
-        if (r.data['parentId']?.toString() == null ||
-            r.data['parentId']?.toString().isEmpty == true ||
-            r.data['parentId']?.toString() == 'null')
-          r,
-    ];
-
-    // Ensure each parent venue gets a unique non-overlapping grid offset,
-    // unless the user has dragged it somewhere else.
-    final draggedPositions = ref.watch(_venueMapPositionsProvider);
-    final positions = <String, Offset>{};
-    for (var i = 0; i < parentResources.length; i++) {
-      final pId = parentResources[i].data['id']?.toString() ?? i.toString();
-      final col = i % 3;
-      final row = i ~/ 3;
-      positions[pId] =
-          draggedPositions[pId] ??
-          Offset(20.0 + col * 360.0, 20.0 + row * 340.0);
-    }
-
-    final childResourcesMap = <String, List<BusinessResource>>{};
-    for (final r in resources) {
-      final parentId = r.data['parentId']?.toString();
-      if (parentId != null && parentId.isNotEmpty && parentId != 'null') {
-        BusinessResource? matchingParent;
-        for (final p in parentResources) {
-          if (p.data['id']?.toString() == parentId ||
-              p.data['name']?.toString().toLowerCase() ==
-                  parentId.toLowerCase()) {
-            matchingParent = p;
-            break;
-          }
-        }
-        final parent =
-            matchingParent ??
-            (parentResources.isNotEmpty ? parentResources.first : r);
-        final key = parent.data['id']?.toString() ?? '';
-        childResourcesMap.putIfAbsent(key, () => []).add(r);
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Venue Map Builder',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w900,
-            color: colors.textPrimary,
-          ),
-        ),
-        const SizedBox(height: AppDimensions.spacingMd),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final isNarrow = constraints.maxWidth < 700;
-
-              final canvasWidget = DecoratedBox(
-                decoration: BoxDecoration(
-                  color: colors.background,
-                  borderRadius: BorderRadius.circular(
-                    AppDimensions.radiusMedium,
-                  ),
-                  border: Border.all(color: colors.border),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(
-                    AppDimensions.radiusMedium,
-                  ),
-                  child: InteractiveViewer(
-                    constrained: false,
-                    minScale: 0.6,
-                    maxScale: 2.0,
-                    boundaryMargin: const EdgeInsets.all(100),
-                    child: SizedBox(
-                      width: 1200,
-                      height: 800,
-                      child: Stack(
-                        children: [
-                          CustomPaint(
-                            size: const Size(1200, 800),
-                            painter: _GridPainter(gridColor: colors.border),
-                          ),
-                          for (final parent in parentResources) ...[
-                            _buildParentBox(
-                              ref: ref,
-                              parent: parent,
-                              children:
-                                  childResourcesMap[parent.data['id']
-                                      ?.toString()] ??
-                                  const [],
-                              colors: colors,
-                              positions: positions,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-
-              final sidebarWidget = Container(
-                width: isNarrow ? double.infinity : 240,
-                height: isNarrow ? 260 : double.infinity,
-                padding: const EdgeInsets.all(AppDimensions.spacingMd),
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  borderRadius: BorderRadius.circular(
-                    AppDimensions.radiusMedium,
-                  ),
-                  border: Border.all(color: colors.border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'VENUES',
-                      style: TextStyle(
-                        color: colors.textSecondary,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 12,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                    const SizedBox(height: AppDimensions.spacingMd),
-                    Expanded(
-                      child: ListView.separated(
-                        itemCount: resources.length,
-                        separatorBuilder: (_, _) =>
-                            const SizedBox(height: AppDimensions.spacingSm),
-                        itemBuilder: (context, index) {
-                          final r = resources[index];
-                          final name = _venueName(
-                            r.data['name']?.toString() ?? AppStrings.venue,
-                          );
-                          final length = _nestedText(r.data, [
-                            'attributes',
-                            'size',
-                            'lengthFt',
-                          ]);
-                          final width = _nestedText(r.data, [
-                            'attributes',
-                            'size',
-                            'widthFt',
-                          ]);
-
-                          return Container(
-                            padding: const EdgeInsets.all(
-                              AppDimensions.spacingMd,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colors.surfaceMuted,
-                              borderRadius: BorderRadius.circular(
-                                AppDimensions.radiusMedium,
-                              ),
-                              border: Border.all(color: colors.border),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        name,
-                                        style: TextStyle(
-                                          color: colors.textPrimary,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      if (length.isNotEmpty || width.isNotEmpty)
-                                        Text(
-                                          '${length.isEmpty ? '--' : length} x ${width.isEmpty ? '--' : width} ft',
-                                          style: TextStyle(
-                                            color: colors.textSecondary,
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: AppDimensions.spacingMd),
-                    FilledButton(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text(
-                              'Map layout saved successfully.',
-                            ),
-                            backgroundColor: colors.primary,
-                          ),
-                        );
-                      },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: colors.primary,
-                        foregroundColor: colors.textOnPrimary,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: const Text('Save Map Layout'),
-                    ),
-                  ],
-                ),
-              );
-
-              if (isNarrow) {
-                return SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      SizedBox(height: 380, child: canvasWidget),
-                      const SizedBox(height: AppDimensions.spacingLg),
-                      sidebarWidget,
-                    ],
-                  ),
-                );
-              }
-
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(flex: 3, child: canvasWidget),
-                  const SizedBox(width: AppDimensions.spacingLg),
-                  sidebarWidget,
-                ],
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildParentBox({
-    required WidgetRef ref,
-    required BusinessResource parent,
-    required List<BusinessResource> children,
-    required AppPalette colors,
-    required Map<String, Offset> positions,
-  }) {
-    final parentId = parent.data['id']?.toString() ?? '';
-    final name = _venueName(
-      parent.data['name']?.toString() ?? AppStrings.venue,
-    );
-    final pos = positions[parentId] ?? const Offset(20, 20);
-
-    final lengthStr = _nestedText(parent.data, [
-      'attributes',
-      'size',
-      'lengthFt',
-    ]);
-    final widthStr = _nestedText(parent.data, [
-      'attributes',
-      'size',
-      'widthFt',
-    ]);
-    final lengthVal = double.tryParse(lengthStr) ?? 50.0;
-    final widthVal = double.tryParse(widthStr) ?? 50.0;
-
-    final boxWidth = (widthVal * 4.5).clamp(250.0, 420.0);
-    final boxHeight = (lengthVal * 4.5).clamp(240.0, 420.0);
-
-    // Classify children into Left and Right sub-fields
-    BusinessResource? leftChild;
-    BusinessResource? rightChild;
-    final otherChildren = <BusinessResource>[];
-
-    for (final child in children) {
-      final childName = (child.data['name']?.toString() ?? '').toLowerCase();
-      if (childName.contains('left') ||
-          childName.contains('l field') ||
-          childName.contains('l-field') ||
-          childName == 'l') {
-        leftChild = child;
-      } else if (childName.contains('right') ||
-          childName.contains('r field') ||
-          childName.contains('r-field') ||
-          childName == 'r') {
-        rightChild = child;
-      } else {
-        otherChildren.add(child);
-      }
-    }
-
-    // Fill remaining slots sequentially if not explicitly named left/right
-    for (final child in otherChildren) {
-      if (leftChild == null) {
-        leftChild = child;
-      } else if (rightChild == null) {
-        rightChild = child;
-      }
-    }
-
-    return Positioned(
-      left: pos.dx,
-      top: pos.dy,
-      child: GestureDetector(
-        onPanUpdate: (details) {
-          ref
-              .read(_venueMapPositionsProvider.notifier)
-              .update(
-                (current) => {
-                  ...current,
-                  parentId: Offset(
-                    (pos.dx + details.delta.dx).clamp(0, 1200),
-                    (pos.dy + details.delta.dy).clamp(0, 800),
-                  ),
-                },
-              );
-        },
-        child: Container(
-          width: boxWidth,
-          height: boxHeight,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: colors.border, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: colors.shadow,
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Parent Field Header (Name + Length x Width dimensions)
-              Row(
-                children: [
-                  Icon(
-                    Icons.drag_handle_rounded,
-                    size: 18,
-                    color: colors.textSecondary,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: colors.textPrimary,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 14,
-                          ),
-                        ),
-                        if (lengthStr.isNotEmpty || widthStr.isNotEmpty)
-                          Text(
-                            'Main Field: ${lengthStr.isEmpty ? '--' : lengthStr} x ${widthStr.isEmpty ? '--' : widthStr} ft',
-                            style: TextStyle(
-                              color: colors.textSecondary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              // Split Classified Sub-Fields Container (LEFT FIELD | RIGHT FIELD)
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // LEFT AREA / FIELD
-                    Expanded(
-                      child: _buildSubAreaBox(
-                        title: 'LEFT FIELD',
-                        resource: leftChild,
-                        accentColor: const Color(0xFF3B82F6),
-                        colors: colors,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // RIGHT AREA / FIELD
-                    Expanded(
-                      child: _buildSubAreaBox(
-                        title: 'RIGHT FIELD',
-                        resource: rightChild,
-                        accentColor: const Color(0xFF10B981),
-                        colors: colors,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSubAreaBox({
-    required String title,
-    required BusinessResource? resource,
-    required Color accentColor,
-    required AppPalette colors,
-  }) {
-    final name = resource != null
-        ? _venueName(resource.data['name']?.toString() ?? title)
-        : title;
-    final lengthStr = resource != null
-        ? _nestedText(resource.data, ['attributes', 'size', 'lengthFt'])
-        : '';
-    final widthStr = resource != null
-        ? _nestedText(resource.data, ['attributes', 'size', 'widthFt'])
-        : '';
-
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        // A tint of the accent reads correctly on both light and dark surfaces.
-        color: accentColor.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: accentColor, width: 1.5),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: colors.textPrimary,
-              fontWeight: FontWeight.w900,
-              fontSize: 13,
-            ),
-          ),
-          if (lengthStr.isNotEmpty || widthStr.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              '${lengthStr.isEmpty ? '--' : lengthStr} x ${widthStr.isEmpty ? '--' : widthStr} ft',
-              style: TextStyle(
-                color: colors.textSecondary,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _GridPainter extends CustomPainter {
-  const _GridPainter({required this.gridColor});
-
-  final Color gridColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = gridColor.withOpacity(0.15)
-      ..strokeWidth = 1;
-
-    const step = 24.0;
-    for (double x = 0; x < size.width; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _AddVenueSheet extends ConsumerStatefulWidget {
@@ -4553,19 +4311,11 @@ class _AddVenueSheetState extends ConsumerState<_AddVenueSheet> {
       return;
     }
     Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _isEdit ? 'Venue updated successfully.' : 'Venue added successfully.',
-        ),
-      ),
-    );
+    AppTopAlert.show(context, _isEdit ? 'Venue updated successfully.' : 'Venue added successfully.');
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppTopAlert.show(context, message);
   }
 
   List<String> _existingImageUrls() {
@@ -4901,15 +4651,11 @@ class _AddCategorySheetState extends ConsumerState<_AddCategorySheet> {
       return;
     }
     Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Category added successfully.')),
-    );
+    AppTopAlert.show(context, 'Category added successfully.');
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppTopAlert.show(context, message);
   }
 
   @override
@@ -5878,4 +5624,163 @@ String _dayMonthYear(DateTime date) {
   final day = date.day.toString().padLeft(2, '0');
   final month = date.month.toString().padLeft(2, '0');
   return '$day/$month/${date.year}';
+}
+
+/// Which booking the owner is currently changing, so only that row's menu
+/// shows a spinner.
+final _updatingBookingStatusIdProvider =
+    StateProvider.autoDispose<String?>((_) => null);
+
+/// States an owner can move a booking to by hand.
+///
+/// `REJECTED_BY_SYSTEM` is deliberately absent: the server sets it when it
+/// turns a booking down, and offering it as a manual choice would let an owner
+/// fake a system decision.
+/// Colour that stands for a booking state, so the pill reads before the label
+/// does. Pulled from the palette where there is a fitting token, since these
+/// have to work in both themes.
+Color _bookingStatusTint(BuildContext context, String status) {
+  final colors = context.appColors;
+
+  return switch (status.toUpperCase()) {
+    'CONFIRMED' => const Color(0xFF15803D),
+    'COMPLETED' => colors.primary,
+    'PENDING' => const Color(0xFFB45309),
+    'CANCELLED' || 'REJECTED_BY_SYSTEM' => colors.error,
+    'NO_SHOW' => const Color(0xFF7C3AED),
+    _ => colors.textSecondary,
+  };
+}
+
+const _settableBookingStatuses = <BookingStatus>[
+  BookingStatus.pending,
+  BookingStatus.confirmed,
+  BookingStatus.completed,
+  BookingStatus.noShow,
+  BookingStatus.cancelled,
+];
+
+/// The booking's status, as a single tappable pill that opens the list of
+/// states.
+///
+/// Chip and chevron are one widget on purpose. Hanging a `PopupMenuButton`
+/// icon off the side of a separate chip left a wide gap — `IconButton` forces
+/// a 48px tap target — and read as two unrelated controls.
+class _BookingStatusMenu extends ConsumerWidget {
+  const _BookingStatusMenu({required this.booking});
+
+  final MyBooking booking;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = context.appColors;
+    final isUpdating =
+        ref.watch(_updatingBookingStatusIdProvider) == booking.id;
+    final current = booking.status.toUpperCase();
+    final tint = _bookingStatusTint(context, current);
+
+    return PopupMenuButton<BookingStatus>(
+      tooltip: AppStrings.changeStatus,
+      padding: EdgeInsets.zero,
+      position: PopupMenuPosition.under,
+      // A tap while the change is in flight would queue a second request.
+      enabled: !isUpdating,
+      borderRadius: BorderRadius.circular(AppDimensions.radiusPill),
+      itemBuilder: (context) => [
+        for (final status in _settableBookingStatuses)
+          PopupMenuItem<BookingStatus>(
+            value: status,
+            // The state it is already in is shown ticked and not selectable,
+            // so a tap cannot fire a pointless request.
+            enabled: status.value != current,
+            child: Row(
+              children: [
+                Icon(
+                  status.value == current
+                      ? Icons.check_rounded
+                      : Icons.circle_outlined,
+                  size: 18,
+                  color: status.value == current
+                      ? colors.primary
+                      : _bookingStatusTint(context, status.value),
+                ),
+                const SizedBox(width: AppDimensions.spacingSm),
+                Text(_titleCaseEnum(status.value)),
+              ],
+            ),
+          ),
+      ],
+      onSelected: (status) => _change(context, ref, status),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: tint.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusPill),
+          border: Border.all(color: tint.withValues(alpha: 0.32)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppDimensions.spacingMd,
+            AppDimensions.spacingSm,
+            AppDimensions.spacingSm,
+            AppDimensions.spacingSm,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _titleCaseEnum(current),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: tint,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.2,
+                    ),
+              ),
+              const SizedBox(width: AppDimensions.spacingXs),
+              // Swapped for a spinner in place, so the pill keeps its size and
+              // the row does not jump while the change is saving.
+              SizedBox.square(
+                dimension: 16,
+                child: isUpdating
+                    ? CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(tint),
+                      )
+                    : Icon(
+                        Icons.expand_more_rounded,
+                        size: 16,
+                        color: tint,
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _change(
+    BuildContext context,
+    WidgetRef ref,
+    BookingStatus status,
+  ) async {
+    ref.read(_updatingBookingStatusIdProvider.notifier).state = booking.id;
+
+    final error = await ref
+        .read(businessAdminActionControllerProvider)
+        .updateBookingStatus(bookingId: booking.id, status: status.value);
+
+    // Cleared against the provider rather than a `mounted` check: the card is
+    // rebuilt from the refreshed list, so this widget may already be gone.
+    ref.read(_updatingBookingStatusIdProvider.notifier).state = null;
+
+    if (!context.mounted) {
+      return;
+    }
+
+    AppTopAlert.show(
+      context,
+      error ?? AppStrings.bookingStatusUpdated(_titleCaseEnum(status.value)),
+      isError: error != null,
+    );
+  }
 }

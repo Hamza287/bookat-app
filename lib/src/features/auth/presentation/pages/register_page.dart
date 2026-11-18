@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/config/app_config.dart';
 import '../../../../core/constants/constants.dart';
 import '../../../../core/enums/app_enums.dart';
 import '../../../../shared/providers/ui_providers.dart';
@@ -9,9 +12,6 @@ import '../providers/auth_providers.dart';
 import 'otp_verification_page.dart';
 
 const _obscurePasswordKey = 'register-password';
-
-final _selectedRoleProvider =
-    StateProvider.autoDispose<Role>((_) => Role.customer);
 
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});
@@ -51,7 +51,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           firstName: _firstNameController.text.trim(),
           lastName: _lastNameController.text.trim(),
           phone: _phoneController.text.trim(),
-          role: ref.read(_selectedRoleProvider),
+          role: Role.customer,
         );
 
     if (!mounted) {
@@ -70,21 +70,31 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     );
   }
 
-  void _showError(String message) {
-    final colors = context.appColors;
+  /// Google accounts arrive verified, so this path skips the OTP screen that
+  /// email signup goes through — the session comes back straight away.
+  Future<void> _signUpWithGoogle() async {
+    FocusScope.of(context).unfocus();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: colors.error),
-    );
+    final error =
+        await ref.read(authControllerProvider.notifier).signInWithGoogle();
+
+    if (!mounted || error == null) {
+      return;
+    }
+
+    _showError(error);
+  }
+
+  void _showError(String message) {
+    AppTopAlert.show(context, message, isError: true);
   }
 
   @override
   Widget build(BuildContext context) {
     final isLoading = ref.watch(authSubmissionLoadingProvider);
+    final isGoogleLoading = ref.watch(googleSubmissionLoadingProvider);
     final colors = context.appColors;
-    final selectedRole = ref.watch(_selectedRoleProvider);
     final obscurePassword = ref.watch(obscureTextProvider(_obscurePasswordKey));
-    final isBusiness = selectedRole == Role.businessAdmin;
 
     return Scaffold(
       body: SafeArea(
@@ -153,18 +163,23 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                         padding: const EdgeInsets.symmetric(
                           horizontal: AppDimensions.spacingXl,
                         ),
-                        child: _AccountTypeSelector(
-                          selectedRole: selectedRole,
-                          onChanged: (role) {
-                            ref.read(_selectedRoleProvider.notifier).state = role;
-                          },
-                        ),
+                        child: const _AccountTypeSelector(),
                       ),
                       Padding(
                         padding: const EdgeInsets.all(AppDimensions.spacingXl),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            // Offered above the form: it is the shorter route
+                            // to an account, and the form below is long.
+                            GoogleSignInButton(
+                              label: AppStrings.signUpWithGoogle,
+                              onPressed: isLoading ? null : _signUpWithGoogle,
+                              isLoading: isGoogleLoading,
+                            ),
+                            const SizedBox(height: AppDimensions.spacingXl),
+                            const AuthDivider(label: AppStrings.authDividerOr),
+                            const SizedBox(height: AppDimensions.spacingXl),
                             LayoutBuilder(
                               builder: (context, constraints) {
                                 final useColumns = constraints.maxWidth >= 480;
@@ -237,9 +252,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                             ),
                             const SizedBox(height: AppDimensions.spacing2xl),
                             AppButton(
-                              label: _buttonLabel(isLoading, isBusiness),
+                              label: _buttonLabel(isLoading && !isGoogleLoading),
                               onPressed: isLoading ? null : _submit,
-                              isLoading: isLoading,
+                              isLoading: isLoading && !isGoogleLoading,
                               isExpanded: true,
                             ),
                           ],
@@ -298,15 +313,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     );
   }
 
-  String _buttonLabel(bool isLoading, bool isBusiness) {
-    if (isLoading) {
-      return isBusiness
-          ? AppStrings.creatingBusinessAccount
-          : AppStrings.creatingAccount;
-    }
-
-    return isBusiness
-        ? AppStrings.createBusinessAccount
+  String _buttonLabel(bool isLoading) {
+    return isLoading
+        ? AppStrings.creatingAccount
         : AppStrings.createCustomerAccount;
   }
 
@@ -363,14 +372,40 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   }
 }
 
-class _AccountTypeSelector extends StatelessWidget {
-  const _AccountTypeSelector({
-    required this.selectedRole,
-    required this.onChanged,
-  });
 
-  final Role selectedRole;
-  final ValueChanged<Role> onChanged;
+String? _validateRequired(String? value) {
+  if ((value ?? '').trim().isEmpty) {
+    return AppStrings.requiredFieldValidation;
+  }
+  return null;
+}
+
+String? _validateEmail(String? value) {
+  final email = value?.trim() ?? '';
+  if (email.isEmpty) {
+    return AppStrings.enterEmailValidation;
+  }
+  if (!email.contains('@') || !email.contains('.')) {
+    return AppStrings.validEmailValidation;
+  }
+  return null;
+}
+
+String? _validatePassword(String? value) {
+  if ((value ?? '').length < 6) {
+    return AppStrings.passwordValidation;
+  }
+  return null;
+}
+
+/// The Customer / Business pair at the top of the form.
+///
+/// Customer is permanently selected: the app only creates customer accounts.
+/// Business is kept as a visible, tappable option rather than hidden, because
+/// an owner arriving here needs to be told where to go — tapping it opens the
+/// website instead of changing the form.
+class _AccountTypeSelector extends StatelessWidget {
+  const _AccountTypeSelector();
 
   @override
   Widget build(BuildContext context) {
@@ -389,8 +424,9 @@ class _AccountTypeSelector extends StatelessWidget {
               child: _AccountTypeButton(
                 label: AppStrings.customer,
                 icon: Icons.person_outline_rounded,
-                isSelected: selectedRole == Role.customer,
-                onPressed: () => onChanged(Role.customer),
+                isSelected: true,
+                // Already the only option; tapping it changes nothing.
+                onPressed: () {},
               ),
             ),
             const SizedBox(width: AppDimensions.spacingXs),
@@ -398,14 +434,48 @@ class _AccountTypeSelector extends StatelessWidget {
               child: _AccountTypeButton(
                 label: AppStrings.business,
                 icon: Icons.business_center_outlined,
-                isSelected: selectedRole == Role.businessAdmin,
-                onPressed: () => onChanged(Role.businessAdmin),
+                isSelected: false,
+                trailingIcon: Icons.open_in_new_rounded,
+                onPressed: () => _openWebsite(context),
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _openWebsite(BuildContext context) async {
+    final uri = Uri.parse(AppConfig.websiteUrl);
+
+    // Tried in order of preference. `externalApplication` hands off to the
+    // browser, which is what is wanted here; `platformDefault` and
+    // `inAppBrowserView` cover devices where no app claims the https intent
+    // outright, so a refusal from one mode is not the end of the attempt.
+    for (final mode in const [
+      LaunchMode.externalApplication,
+      LaunchMode.platformDefault,
+      LaunchMode.inAppBrowserView,
+    ]) {
+      try {
+        if (await launchUrl(uri, mode: mode)) {
+          return;
+        }
+      } catch (_) {
+        // Try the next mode rather than giving up on the first throw.
+      }
+    }
+
+    if (!context.mounted) {
+      return;
+    }
+
+    // Every mode refused — there is genuinely no browser to hand off to. The
+    // address goes to the clipboard so the owner is not left at a dead end.
+    await Clipboard.setData(const ClipboardData(text: AppConfig.websiteUrl));
+    if (context.mounted) {
+      AppTopAlert.show(context, AppStrings.businessSignupLinkCopied);
+    }
   }
 }
 
@@ -415,12 +485,16 @@ class _AccountTypeButton extends StatelessWidget {
     required this.icon,
     required this.isSelected,
     required this.onPressed,
+    this.trailingIcon,
   });
 
   final String label;
   final IconData icon;
   final bool isSelected;
   final VoidCallback onPressed;
+
+  /// Shown after the label to signal that this option leaves the app.
+  final IconData? trailingIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -470,35 +544,14 @@ class _AccountTypeButton extends StatelessWidget {
                       ),
                 ),
               ),
+              if (trailingIcon != null) ...[
+                const SizedBox(width: AppDimensions.spacingXs),
+                Icon(trailingIcon, size: 14, color: colors.textSecondary),
+              ],
             ],
           ),
         ),
       ),
     );
   }
-}
-
-String? _validateRequired(String? value) {
-  if ((value ?? '').trim().isEmpty) {
-    return AppStrings.requiredFieldValidation;
-  }
-  return null;
-}
-
-String? _validateEmail(String? value) {
-  final email = value?.trim() ?? '';
-  if (email.isEmpty) {
-    return AppStrings.enterEmailValidation;
-  }
-  if (!email.contains('@') || !email.contains('.')) {
-    return AppStrings.validEmailValidation;
-  }
-  return null;
-}
-
-String? _validatePassword(String? value) {
-  if ((value ?? '').length < 6) {
-    return AppStrings.passwordValidation;
-  }
-  return null;
 }

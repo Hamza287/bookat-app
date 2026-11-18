@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../../../core/errors/failure.dart';
+import '../../../../core/network/network.dart';
 import '../../../../core/utils/result.dart';
 import '../../domain/entities/booking_confirmation.dart';
 import '../../domain/entities/business.dart';
@@ -104,7 +105,7 @@ class BookingRepositoryImpl implements BookingRepository {
       );
       return Success(booking);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _bookingMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _bookingMessage(e.response?.statusCode)));
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
     } catch (_) {
@@ -132,7 +133,7 @@ class BookingRepositoryImpl implements BookingRepository {
       final bookings = await _remoteDataSource.getMyBookings(accessToken);
       return Success(bookings);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _myBookingsMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _myBookingsMessage(e.response?.statusCode)));
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
     } catch (_) {
@@ -163,7 +164,7 @@ class BookingRepositoryImpl implements BookingRepository {
       );
       return const Success(null);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _cancelMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _cancelMessage(e.response?.statusCode)));
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
     } catch (_) {
@@ -239,7 +240,7 @@ class BookingRepositoryImpl implements BookingRepository {
       );
       return Success(review);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _reviewMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _reviewMessage(e.response?.statusCode)));
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
     } catch (_) {

@@ -12,7 +12,36 @@
           "package_name": "com.bookat.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1031911403777-02vg87j6mmuefjdtl490ldo21h0pn9tj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bookat.app",
+            "certificate_hash": "82f84383397840701dbec20c4130f06d3862515e"
+          }
+        },
+        {
+          "client_id": "1031911403777-53pciuhhu570ipmvdul6cnud7qgpv1ec.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bookat.app",
+            "certificate_hash": "ce050129beb8c1b13510c133930679d360eb1499"
+          }
+        },
+        {
+          "client_id": "1031911403777-9f5pcq2e8ctvf4na7n29f91m0f7j9t89.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bookat.app",
+            "certificate_hash": "517c2d9c76c0277a94bfb6839127bff506616bc0"
+          }
+        },
+        {
+          "client_id": "1031911403777-mstv05amgp1d0bhksu5dbtfmplmuscpi.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCvZ_8NsLV7qUfa6nC5TKBZlJL1wL9YdRs"
@@ -20,26 +49,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:1031911403777:android:85aed1ce304a5d2174eb00",
-        "android_client_info": {
-          "package_name": "com.example.bookat"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyCvZ_8NsLV7qUfa6nC5TKBZlJL1wL9YdRs"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1031911403777-mstv05amgp1d0bhksu5dbtfmplmuscpi.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1031911403777-eafro5rtro147phin4q0g8vg5ppieaqa.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.bookat"
+              }
+            }
+          ]
         }
       }
     }

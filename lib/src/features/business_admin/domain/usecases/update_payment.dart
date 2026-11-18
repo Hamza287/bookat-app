@@ -21,6 +21,19 @@ class UpdatePayment {
     );
   }
 
+  /// Settles [paymentIds] in a single request.
+  Future<Result<void>> bulkStatus({
+    required List<String> paymentIds,
+    required String accessToken,
+    required String status,
+  }) {
+    return _repository.bulkUpdatePaymentStatus(
+      paymentIds: paymentIds,
+      accessToken: accessToken,
+      status: status,
+    );
+  }
+
   Future<Result<void>> method({
     required String paymentId,
     required String accessToken,

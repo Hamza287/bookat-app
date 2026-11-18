@@ -84,11 +84,8 @@ void main() {
           (ref, id) async => business().resources,
         ),
         resourceCategoriesProvider.overrideWith((ref, id) async => const []),
-        businessPaymentsProvider.overrideWith(
-          (ref) async => const BusinessPayments(
-            payments: [],
-            stats: BusinessPaymentStats.empty(),
-          ),
+        businessPaymentsForMonthProvider.overrideWith(
+          _EmptyPaymentsNotifier.new,
         ),
       ],
     );
@@ -167,11 +164,8 @@ void main() {
           (ref, id) async => business().resources,
         ),
         resourceCategoriesProvider.overrideWith((ref, id) async => const []),
-        businessPaymentsProvider.overrideWith(
-          (ref) async => const BusinessPayments(
-            payments: [],
-            stats: BusinessPaymentStats.empty(),
-          ),
+        businessPaymentsForMonthProvider.overrideWith(
+          _EmptyPaymentsNotifier.new,
         ),
       ],
     );
@@ -255,4 +249,15 @@ class _StubAuth extends AuthController {
 
   @override
   Future<AuthSession?> build() async => _session;
+}
+
+/// The payments tab is not what this test exercises, so every month is empty.
+class _EmptyPaymentsNotifier extends BusinessPaymentsNotifier {
+  @override
+  Future<BusinessPayments> build(DateTime month) async {
+    return const BusinessPayments(
+      payments: [],
+      stats: BusinessPaymentStats.empty(),
+    );
+  }
 }

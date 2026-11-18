@@ -1,4 +1,6 @@
-﻿import 'package:flutter_riverpod/flutter_riverpod.dart';
+﻿import 'dart:async';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/dependency_providers.dart';
 import '../../../../core/errors/failure.dart';
@@ -154,41 +156,96 @@ final paymentsMonthProvider = StateProvider.autoDispose<DateTime>((_) {
 /// Keyed rather than tied to the selected month so several months can be in
 /// flight at once — the profit comparison needs two of them side by side, and
 /// this way the month the owner is already looking at is served from cache.
-final businessPaymentsForMonthProvider =
-    FutureProvider.autoDispose.family<BusinessPayments, DateTime>(
-        (ref, month) async {
-  final session = ref.watch(authControllerProvider).valueOrNull;
-  final business = ref.watch(activeBusinessProvider);
-  if (session == null || business == null) {
-    throw const UnexpectedFailure(
-      message: 'Please sign in again to view payments.',
+final businessPaymentsForMonthProvider = AsyncNotifierProvider.autoDispose
+    .family<BusinessPaymentsNotifier, BusinessPayments, DateTime>(
+  BusinessPaymentsNotifier.new,
+);
+
+/// A notifier rather than a plain future, so settling a payment can change the
+/// rows on screen without re-fetching the month.
+///
+/// Invalidating sent the whole tab back through its loading state, which read
+/// as the entire screen flashing to settle one row.
+class BusinessPaymentsNotifier
+    extends AutoDisposeFamilyAsyncNotifier<BusinessPayments, DateTime> {
+  @override
+  Future<BusinessPayments> build(DateTime month) => _fetch(month);
+
+  Future<BusinessPayments> _fetch(DateTime month) async {
+    final session = ref.watch(authControllerProvider).valueOrNull;
+    final business = ref.watch(activeBusinessProvider);
+    if (session == null || business == null) {
+      throw const UnexpectedFailure(
+        message: 'Please sign in again to view payments.',
+      );
+    }
+
+    // Day 0 of the following month is the last day of this one, which keeps
+    // 28/29/30/31-day months correct without a lookup table.
+    final lastDay = DateTime(month.year, month.month + 1, 0);
+
+    final result = await ref.watch(getBusinessPaymentsProvider)(
+      businessId: business.id,
+      accessToken: session.accessToken,
+      startDate: DateTime(month.year, month.month),
+      endDate: lastDay,
+    );
+
+    return switch (result) {
+      Success(data: final payments) => payments,
+      Fail(failure: final failure) => throw failure,
+    };
+  }
+
+  /// Marks [paymentIds] settled in the rows already on screen.
+  ///
+  /// Only the affected cards rebuild; the list, the month switcher and the
+  /// stats panel stay exactly as they are.
+  void applySettled({
+    required Set<String> paymentIds,
+    required String status,
+    String? method,
+  }) {
+    final current = state.valueOrNull;
+    if (current == null) {
+      return;
+    }
+
+    state = AsyncData(
+      current.withSettled(
+        paymentIds: paymentIds,
+        status: status,
+        method: method,
+      ),
     );
   }
 
-  // Day 0 of the following month is the last day of this one, which keeps
-  // 28/29/30/31-day months correct without a lookup table.
-  final lastDay = DateTime(month.year, month.month + 1, 0);
+  /// Re-reads the month without passing through a loading state.
+  ///
+  /// Used after [applySettled] to pick up the server-computed stats. A failure
+  /// is swallowed on purpose: the rows are already right, and replacing the
+  /// screen with an error because a background reconcile failed would be worse
+  /// than slightly stale totals.
+  Future<void> refreshQuietly() async {
+    try {
+      state = AsyncData(await _fetch(arg));
+    } catch (_) {
+      // Keep what is on screen.
+    }
+  }
+}
 
-  final result = await ref.watch(getBusinessPaymentsProvider)(
-    businessId: business.id,
-    accessToken: session.accessToken,
-    startDate: DateTime(month.year, month.month),
-    endDate: lastDay,
-  );
-
-  return switch (result) {
-    Success(data: final payments) => payments,
-    Fail(failure: final failure) => throw failure,
-  };
-});
-
-final businessPaymentsProvider =
-    FutureProvider.autoDispose<BusinessPayments>((ref) {
-  final month = ref.watch(paymentsMonthProvider);
-  return ref.watch(
-    businessPaymentsForMonthProvider(DateTime(month.year, month.month)).future,
-  );
-});
+/// First day of the month the payments tab is bound to, as the family key.
+///
+/// Screens watch [businessPaymentsForMonthProvider] with this directly. An
+/// earlier `businessPaymentsProvider` wrapped it in a second `FutureProvider`
+/// that awaited `.future`, and that indirection was why settling a payment
+/// flashed the whole screen: each time the notifier emitted, the wrapper
+/// re-ran and published an `AsyncLoading` of its own, so the tab rendered its
+/// skeleton even though the notifier had never left `AsyncData`.
+DateTime paymentsMonthKey(DateTime month) {
+  return DateTime(month.year, month.month);
+}
 
 /// This month's takings against last month's.
 ///
@@ -457,6 +514,36 @@ class BusinessAdminActionController {
     };
   }
 
+  /// Moves a booking to a new state. Returns null on success, or a message.
+  Future<String?> updateBookingStatus({
+    required String bookingId,
+    required String status,
+  }) async {
+    final session = _ref.read(authControllerProvider).valueOrNull;
+    final business = _ref.read(activeBusinessProvider);
+    if (session == null || business == null) {
+      return 'Please sign in again to update this booking.';
+    }
+
+    final result = await _ref.read(updateBookingStatusProvider)(
+      bookingId: bookingId,
+      accessToken: session.accessToken,
+      status: status,
+    );
+
+    switch (result) {
+      case Success():
+        // The timeline shows the new state, and the day's takings change with
+        // it — a cancelled booking drops out of the total.
+        _ref.invalidate(businessBookingsProvider(business.id));
+        _ref.invalidate(businessStatsProvider);
+        _ref.invalidate(businessPaymentsForMonthProvider);
+        return null;
+      case Fail(failure: final failure):
+        return failure.message;
+    }
+  }
+
   /// Books a walk-in or phone customer. [overridePrice] is sent only when the
   /// owner typed one — otherwise the server prices the slot itself.
   Future<String?> createManualBooking({
@@ -536,13 +623,91 @@ class BusinessAdminActionController {
 
     switch (result) {
       case Success():
-        // Invalidate the family: every cached month, the screen bound to the
-        // selected one, and the profit comparison derived from two of them.
-        _ref.invalidate(businessPaymentsForMonthProvider);
+        _applySettled({paymentId}, status: status, method: method);
         return null;
       case Fail(failure: final failure):
         return failure.message;
     }
+  }
+
+  /// Settles several payments at once.
+  ///
+  /// The status goes in a single bulk request. The method does not — the bulk
+  /// endpoint only carries a status — so the methods are written first, in
+  /// parallel, and only then are the payments marked paid. A method that fails
+  /// aborts before anything is settled, for the same reason as the single-row
+  /// path: better untouched than paid against the wrong method.
+  Future<String?> settlePayments({
+    required List<String> paymentIds,
+    required String method,
+    String status = 'PAID',
+  }) async {
+    if (paymentIds.isEmpty) {
+      return null;
+    }
+
+    final session = _ref.read(authControllerProvider).valueOrNull;
+    if (session == null) {
+      return 'Please sign in again to update these payments.';
+    }
+
+    final useCase = _ref.read(updatePaymentProvider);
+
+    if (method.isNotEmpty) {
+      final methodResults = await Future.wait([
+        for (final paymentId in paymentIds)
+          useCase.method(
+            paymentId: paymentId,
+            accessToken: session.accessToken,
+            method: method,
+          ),
+      ]);
+
+      for (final methodResult in methodResults) {
+        if (methodResult case Fail(failure: final failure)) {
+          return failure.message;
+        }
+      }
+    }
+
+    final result = await useCase.bulkStatus(
+      paymentIds: paymentIds,
+      accessToken: session.accessToken,
+      status: status,
+    );
+
+    switch (result) {
+      case Success():
+        _applySettled(paymentIds.toSet(), status: status, method: method);
+        return null;
+      case Fail(failure: final failure):
+        return failure.message;
+    }
+  }
+
+  /// Updates the rows on screen, then reconciles the server-computed stats in
+  /// the background.
+  ///
+  /// The screen never passes through a loading state, so settling a payment
+  /// changes the cards it affects and nothing else. The other cached months
+  /// are invalidated instead — they are off screen, so refetching them costs
+  /// nothing visually, and the profit comparison is derived from them.
+  void _applySettled(
+    Set<String> paymentIds, {
+    required String status,
+    required String method,
+  }) {
+    final month = _ref.read(paymentsMonthProvider);
+    final key = DateTime(month.year, month.month);
+    final notifier = _ref.read(businessPaymentsForMonthProvider(key).notifier);
+
+    notifier.applySettled(
+      paymentIds: paymentIds,
+      status: status,
+      method: method.isEmpty ? null : method,
+    );
+
+    unawaited(notifier.refreshQuietly());
   }
 
   Future<String?> deleteScheduleException(String exceptionId) async {

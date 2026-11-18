@@ -51,12 +51,21 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     FocusScope.of(context).unfocus();
   }
 
-  void _showError(String message) {
-    final colors = context.appColors;
+  Future<void> _signInWithGoogle() async {
+    FocusScope.of(context).unfocus();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: colors.error),
-    );
+    final error =
+        await ref.read(authControllerProvider.notifier).signInWithGoogle();
+
+    if (!mounted || error == null) {
+      return;
+    }
+
+    _showError(error);
+  }
+
+  void _showError(String message) {
+    AppTopAlert.show(context, message, isError: true);
   }
 
   void _openRegister() {
@@ -80,6 +89,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final isLoading = ref.watch(authSubmissionLoadingProvider);
+    final isGoogleLoading = ref.watch(googleSubmissionLoadingProvider);
     final obscurePassword = ref.watch(obscureTextProvider(_obscurePasswordKey));
 
     return Scaffold(
@@ -146,10 +156,20 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                     const SizedBox(height: AppDimensions.spacingLg),
                     AppButton(
-                      label: isLoading ? AppStrings.signingIn : AppStrings.signIn,
+                      label: isLoading && !isGoogleLoading
+                          ? AppStrings.signingIn
+                          : AppStrings.signIn,
                       onPressed: isLoading ? null : _submit,
-                      isLoading: isLoading,
+                      isLoading: isLoading && !isGoogleLoading,
                       isExpanded: true,
+                    ),
+                    const SizedBox(height: AppDimensions.spacingXl),
+                    const AuthDivider(label: AppStrings.authDividerOr),
+                    const SizedBox(height: AppDimensions.spacingXl),
+                    GoogleSignInButton(
+                      label: AppStrings.continueWithGoogle,
+                      onPressed: isLoading ? null : _signInWithGoogle,
+                      isLoading: isGoogleLoading,
                     ),
                     const SizedBox(height: AppDimensions.spacingMd),
                     AppButton(

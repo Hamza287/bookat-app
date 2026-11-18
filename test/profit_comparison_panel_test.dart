@@ -92,7 +92,11 @@ void main() {
         resourceCategoriesProvider.overrideWith((ref, id) async => const []),
         // Keyed by month, so the two calls are told apart by their argument.
         businessPaymentsForMonthProvider.overrideWith(
-          (ref, month) async => month == currentKey ? thisMonth : lastMonth,
+          () => _StubPaymentsNotifier(
+            currentKey: currentKey,
+            thisMonth: thisMonth,
+            lastMonth: lastMonth,
+          ),
         ),
       ],
     );
@@ -184,4 +188,23 @@ class _StubAuth extends AuthController {
 
   @override
   Future<AuthSession?> build() async => _session;
+}
+
+/// Serves a different month's figures depending on which month is asked for,
+/// so the comparison has two distinct sides to work with.
+class _StubPaymentsNotifier extends BusinessPaymentsNotifier {
+  _StubPaymentsNotifier({
+    required this.currentKey,
+    required this.thisMonth,
+    required this.lastMonth,
+  });
+
+  final DateTime currentKey;
+  final BusinessPayments thisMonth;
+  final BusinessPayments lastMonth;
+
+  @override
+  Future<BusinessPayments> build(DateTime month) async {
+    return month == currentKey ? thisMonth : lastMonth;
+  }
 }

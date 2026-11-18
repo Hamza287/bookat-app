@@ -1,6 +1,7 @@
 import 'package:bookat/src/core/utils/result.dart';
 import 'package:bookat/src/features/auth/data/datasources/auth_local_data_source.dart';
 import 'package:bookat/src/features/auth/data/datasources/auth_remote_data_source.dart';
+import 'package:bookat/src/features/auth/data/datasources/google_identity_service.dart';
 import 'package:bookat/src/features/auth/data/models/password_reset_model.dart';
 import 'package:bookat/src/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:bookat/src/features/auth/domain/entities/password_reset.dart';
@@ -52,6 +53,7 @@ void main() {
       repository = AuthRepositoryImpl(
         remoteDataSource: dataSource,
         localDataSource: _UnusedLocalDataSource(),
+        googleIdentityService: _UnusedGoogleIdentityService(),
       );
     });
 
@@ -201,6 +203,15 @@ class _SpyDataSource implements AuthRemoteDataSource {
 }
 
 /// Reset touches no local storage, so any call here is a mistake.
+/// Password reset never touches Google.
+class _UnusedGoogleIdentityService implements GoogleIdentityService {
+  @override
+  Future<String?> obtainIdToken() => throw UnimplementedError();
+
+  @override
+  Future<void> signOut() => throw UnimplementedError();
+}
+
 class _UnusedLocalDataSource implements AuthLocalDataSource {
   @override
   dynamic noSuchMethod(Invocation invocation) {

@@ -1829,13 +1829,7 @@ void showSettingsMessage(
     return;
   }
 
-  final colors = context.appColors;
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(message),
-      backgroundColor: isError ? colors.error : colors.primary,
-    ),
-  );
+  AppTopAlert.show(context, message, isError: isError);
 }
 
 /// Parses `#rrggbb` / `#aarrggbb`, falling back when the value is incomplete

@@ -4,7 +4,12 @@ class ApiEndpoints {
   static const authRegister = '/auth/register';
   static const authVerifyOtp = '/auth/verify-otp';
   static const authLogin = '/auth/login';
+  static const authGoogle = '/auth/google';
   static const authRefresh = '/auth/refresh';
+
+  /// Body: `{"fcmToken": "<device token>"}`. Ends the session server-side and
+  /// stops push going to this device.
+  static const authLogout = '/auth/logout';
   static const authForgotPassword = '/auth/forgot-password';
   static const authResetPassword = '/auth/reset-password';
 
@@ -15,6 +20,11 @@ class ApiEndpoints {
   static const notificationToken = '/notifications/token';
   static const configCategories = '/config/categories';
   static const reviews = '/reviews';
+
+  /// Owner/admin only. Body: `{"status": "<BookingStatus.value>"}`.
+  static String bookingStatus(String bookingId) {
+    return '/bookings/$bookingId/status';
+  }
 
   static String bookingCancel(String bookingId) {
     return '/bookings/$bookingId/cancel';
@@ -82,6 +92,9 @@ class ApiEndpoints {
   static String paymentStatus(String paymentId) {
     return '/payments/$paymentId/status';
   }
+
+  /// Settles several payments in one request: `{paymentIds: [...], status}`.
+  static const paymentsBulkStatus = '/payments/bulk-status';
 
   /// Body: `{"method": "<free-form string>"}` — the server does not constrain
   /// this to an enum.

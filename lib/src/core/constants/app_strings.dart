@@ -21,16 +21,25 @@ class AppStrings {
   static const signIn = 'Sign in';
   static const signingIn = 'Signing in...';
   static const createAccount = 'Create an account';
+  static const continueWithGoogle = 'Continue with Google';
+  static const signUpWithGoogle = 'Sign up with Google';
+  static const authDividerOr = 'OR';
   static const createAccountTitle = 'Create account';
   static const createAccountSubtitle =
       'Join Bookat to discover, book, or manage local services.';
   static const customer = 'Customer';
   static const business = 'Business';
   static const creatingAccount = 'Creating account...';
-  static const creatingBusinessAccount = 'Creating business account...';
-  static const createBusinessAccount = 'Create business account';
   static const createCustomerAccount = 'Create customer account';
   static const alreadyHaveAccount = 'Already have an account?';
+  static const businessSignupTitle = 'Registering a business?';
+  static const businessSignupBody =
+      'Business accounts are set up on our website, where you can add your '
+      'venues, hours and pricing.';
+  static const businessSignupAction = 'Register on the website';
+  static const businessSignupLinkCopied =
+      'Link copied. Open it in your browser to continue.';
+
   static const termsAgreement =
       'By registering, you agree to our Terms of Service and Privacy Policy.';
   static const verifyEmailTitle = 'Verify your email';
@@ -144,6 +153,12 @@ class AppStrings {
   static const overview = 'Overview';
   static const venues = 'Venues';
   static const payments = 'Payments';
+  static const changeStatus = 'Change status';
+
+  static String bookingStatusUpdated(String status) {
+    return 'Booking marked as $status.';
+  }
+
   static const settings = 'Settings';
 
   static const addBooking = 'Add Booking';
@@ -180,6 +195,26 @@ class AppStrings {
   static const paymentMethod = 'Payment method';
   static const markAsPaid = 'Mark as Paid';
   static const paymentMarkedPaid = 'Payment marked as paid.';
+  static const selectAll = 'Select all';
+  static const clearSelection = 'Clear';
+
+  static String pendingPaymentsCount(int count) {
+    return count == 1 ? '1 payment pending' : '$count payments pending';
+  }
+
+  static String paymentsSelectedCount(int selected, int total) {
+    return '$selected of $total selected';
+  }
+
+  static String markSelectedPaid(int count) {
+    return count == 1 ? 'Mark 1 payment as paid' : 'Mark $count payments as paid';
+  }
+
+  static String paymentsMarkedPaid(int count) {
+    return count == 1
+        ? 'Payment marked as paid.'
+        : '$count payments marked as paid.';
+  }
   static const noPaymentsForMonth = 'No payments recorded for this month.';
   static const paymentsLoadError = 'We could not load payments.';
   static const revenueToday = "Today's Revenue";

@@ -6,6 +6,7 @@ import '../../app/theme_mode_provider.dart';
 import '../../core/constants/constants.dart';
 import '../../core/enums/app_enums.dart';
 import '../../features/auth/domain/entities/auth_session.dart';
+import 'app_top_alert.dart';
 import '../../features/auth/presentation/providers/auth_providers.dart';
 import '../../features/booking/presentation/pages/my_bookings_page.dart';
 
@@ -100,7 +101,6 @@ class AppDrawer extends ConsumerWidget {
   }
 
   Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
-    final colors = context.appColors;
     final shouldLogout = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -136,12 +136,7 @@ class AppDrawer extends ConsumerWidget {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text(AppStrings.logoutSuccess),
-        backgroundColor: colors.primary,
-      ),
-    );
+    AppTopAlert.show(context, AppStrings.logoutSuccess);
   }
 }
 

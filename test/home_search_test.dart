@@ -71,7 +71,10 @@ void main() {
 
     expect(repository.searchCalls, [('', '')]);
     expect(find.text('Bats and Balls'), findsOneWidget);
-    expect(find.text('Sports Ground'), findsOneWidget);
+    // The category chips were removed: the list is always every business, so
+    // no category is offered and none is ever sent as a `type` filter.
+    expect(find.text('Sports Ground'), findsNothing);
+    expect(find.text('All'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -96,28 +99,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('selecting a category sends its value as the type filter',
+  testWidgets('a failure fetching categories no longer affects the screen',
       (tester) async {
-    final repository = _FakeRepository(
-      categories: const [BusinessCategory(value: 'SPORTS_GROUND', label: 'Sports Ground')],
-      businesses: [business('Bats and Balls')],
-    );
-    final container = await readyContainer(repository);
-    addTearDown(container.dispose);
-
-    await tester.pumpWidget(harness(container));
-    await tester.pumpAndSettle();
-    repository.searchCalls.clear();
-
-    await tester.tap(find.text('Sports Ground'));
-    await tester.pumpAndSettle();
-
-    expect(repository.searchCalls, [('', 'SPORTS_GROUND')]);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('falls back to just the All chip when categories fail to load',
-      (tester) async {
+    // Nothing reads the category list any more, so a server that cannot supply
+    // it must not change what the customer sees.
     final repository = _FakeRepository(
       businesses: [business('Bats and Balls')],
       categoriesFail: true,
@@ -128,24 +113,17 @@ void main() {
     await tester.pumpWidget(harness(container));
     await tester.pumpAndSettle();
 
-    expect(find.text('All'), findsOneWidget);
     expect(find.text('Bats and Balls'), findsOneWidget);
+    expect(find.text('All'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('renders without overflow at a narrow width with several categories',
-      (tester) async {
+  testWidgets('renders without overflow at a narrow width', (tester) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
     final repository = _FakeRepository(
-      categories: const [
-        BusinessCategory(value: 'SPORTS_GROUND', label: 'Sports Ground'),
-        BusinessCategory(value: 'SALON', label: 'Salon'),
-        BusinessCategory(value: 'CLINIC', label: 'Clinic'),
-        BusinessCategory(value: 'STUDIO', label: 'Photography Studio'),
-      ],
       businesses: [business('Bats and Balls')],
     );
     final container = await readyContainer(repository);

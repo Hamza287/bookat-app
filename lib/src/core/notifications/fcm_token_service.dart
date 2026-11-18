@@ -20,9 +20,11 @@ class FcmTokenService {
     }
 
     try {
-      return _messaging.getToken();
+      final token = await _messaging.getToken();
+      debugPrint('[FCM] getToken -> ${token ?? 'null'}');
+      return token;
     } on FirebaseException catch (error) {
-      debugPrint('FCM token unavailable: ${error.message}');
+      debugPrint('[FCM] token unavailable: ${error.message}');
       return null;
     }
   }

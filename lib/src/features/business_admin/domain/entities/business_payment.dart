@@ -41,6 +41,22 @@ class BusinessPayment extends Equatable {
   bool get isPaid => status.toUpperCase() == 'PAID';
   bool get isPending => status.toUpperCase() == 'PENDING';
 
+  BusinessPayment copyWith({String? method, String? status}) {
+    return BusinessPayment(
+      id: id,
+      bookingId: bookingId,
+      amount: amount,
+      currency: currency,
+      method: method ?? this.method,
+      status: status ?? this.status,
+      customerName: customerName,
+      customerPhone: customerPhone,
+      resourceName: resourceName,
+      slotStart: slotStart,
+      createdAt: createdAt,
+    );
+  }
+
   @override
   List<Object?> get props => [
         id,
@@ -99,6 +115,32 @@ class BusinessPayments extends Equatable {
 
   final List<BusinessPayment> payments;
   final BusinessPaymentStats stats;
+
+  /// The same month with [paymentIds] settled.
+  ///
+  /// [stats] is deliberately carried over untouched: it is computed server-side
+  /// over the whole range, so re-deriving it here would invent a number. The
+  /// caller refreshes it from the server afterwards.
+  BusinessPayments withSettled({
+    required Set<String> paymentIds,
+    required String status,
+    String? method,
+  }) {
+    if (paymentIds.isEmpty) {
+      return this;
+    }
+
+    return BusinessPayments(
+      payments: [
+        for (final payment in payments)
+          if (paymentIds.contains(payment.id))
+            payment.copyWith(status: status, method: method)
+          else
+            payment,
+      ],
+      stats: stats,
+    );
+  }
 
   @override
   List<Object?> get props => [payments, stats];

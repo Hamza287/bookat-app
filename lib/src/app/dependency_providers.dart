@@ -10,14 +10,18 @@ import '../core/notifications/notification_token_registration_service.dart';
 import '../features/auth/data/datasources/auth_local_data_source.dart';
 import '../features/auth/data/datasources/auth_remote_data_source.dart';
 import '../features/auth/data/datasources/dio_auth_remote_data_source.dart';
+import '../features/auth/data/datasources/google_identity_service.dart';
 import '../features/auth/data/datasources/shared_preferences_auth_local_data_source.dart';
 import '../features/auth/data/models/auth_session_model.dart';
 import '../features/auth/data/repositories/auth_repository_impl.dart';
 import '../features/auth/domain/repositories/auth_repository.dart';
 import '../features/auth/domain/usecases/login_user.dart';
 import '../features/auth/domain/usecases/register_user.dart';
+import '../features/auth/domain/usecases/logout_user.dart';
+import '../features/auth/domain/usecases/refresh_session.dart';
 import '../features/auth/domain/usecases/request_password_reset.dart';
 import '../features/auth/domain/usecases/reset_password.dart';
+import '../features/auth/domain/usecases/sign_in_with_google.dart';
 import '../features/auth/domain/usecases/verify_otp.dart';
 import '../features/auth/presentation/providers/auth_providers.dart';
 import '../features/business_admin/data/datasources/business_admin_remote_data_source.dart';
@@ -38,6 +42,7 @@ import '../features/business_admin/domain/usecases/get_resource_categories.dart'
 import '../features/business_admin/domain/usecases/create_manual_booking.dart';
 import '../features/business_admin/domain/usecases/get_business_payments.dart';
 import '../features/business_admin/domain/usecases/get_schedule_exceptions.dart';
+import '../features/business_admin/domain/usecases/update_booking_status.dart';
 import '../features/business_admin/domain/usecases/update_payment.dart';
 import '../features/business_admin/domain/usecases/update_business.dart';
 import '../features/business_admin/domain/usecases/update_business_resource.dart';
@@ -84,14 +89,26 @@ final dioProvider = Provider<Dio>((ref) {
         if (current == null) {
           return;
         }
-        await localDataSource.saveSession(
-          AuthSessionModel.fromEntity(
-            current.copyWith(
-              accessToken: tokens.accessToken,
-              refreshToken: tokens.refreshToken,
-            ),
-          ),
+
+        final refreshed = current.copyWith(
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken.isEmpty
+              // Some servers only reissue the access token; keeping the old
+              // refresh token is better than blanking it.
+              ? current.refreshToken
+              : tokens.refreshToken,
         );
+
+        await localDataSource.saveSession(
+          AuthSessionModel.fromEntity(refreshed),
+        );
+        // Storage alone is not enough: every data source reads the token off
+        // the in-memory session, so without this the app keeps sending the
+        // token that just expired and pays a 401 plus a refresh on every
+        // single call until it is restarted.
+        ref.read(authControllerProvider.notifier).applyRefreshedSession(
+              refreshed,
+            );
       },
       onSessionExpired: () async {
         await ref.read(authLocalDataSourceProvider).clearSession();
@@ -146,10 +163,17 @@ final authLocalDataSourceProvider = Provider<AuthLocalDataSource>((ref) {
   );
 });
 
+final googleIdentityServiceProvider = Provider<GoogleIdentityService>((_) {
+  return FirebaseGoogleIdentityService(
+    serverClientId: AppConfig.googleServerClientId,
+  );
+});
+
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepositoryImpl(
     remoteDataSource: ref.watch(authRemoteDataSourceProvider),
     localDataSource: ref.watch(authLocalDataSourceProvider),
+    googleIdentityService: ref.watch(googleIdentityServiceProvider),
   );
 });
 
@@ -163,6 +187,18 @@ final verifyOtpProvider = Provider<VerifyOtp>((ref) {
 
 final loginUserProvider = Provider<LoginUser>((ref) {
   return LoginUser(ref.watch(authRepositoryProvider));
+});
+
+final signInWithGoogleProvider = Provider<SignInWithGoogle>((ref) {
+  return SignInWithGoogle(ref.watch(authRepositoryProvider));
+});
+
+final logoutUserProvider = Provider<LogoutUser>((ref) {
+  return LogoutUser(ref.watch(authRepositoryProvider));
+});
+
+final refreshSessionProvider = Provider<RefreshSession>((ref) {
+  return RefreshSession(ref.watch(authRepositoryProvider));
 });
 
 final requestPasswordResetProvider = Provider<RequestPasswordReset>((ref) {
@@ -295,6 +331,10 @@ final createScheduleExceptionProvider = Provider<CreateScheduleException>((ref) 
 
 final deleteScheduleExceptionProvider = Provider<DeleteScheduleException>((ref) {
   return DeleteScheduleException(ref.watch(businessAdminRepositoryProvider));
+});
+
+final updateBookingStatusProvider = Provider<UpdateBookingStatus>((ref) {
+  return UpdateBookingStatus(ref.watch(businessAdminRepositoryProvider));
 });
 
 final createManualBookingProvider = Provider<CreateManualBooking>((ref) {

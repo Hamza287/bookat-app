@@ -114,6 +114,17 @@ abstract interface class BusinessAdminRepository {
     required String accessToken,
   });
 
+  /// Moves a booking to a new state — confirming it, marking it complete, or
+  /// recording a no-show.
+  ///
+  /// [status] is a [BookingStatus] value such as `CONFIRMED`. Owner/admin only;
+  /// the server answers 403 for anyone else.
+  Future<Result<void>> updateBookingStatus({
+    required String bookingId,
+    required String accessToken,
+    required String status,
+  });
+
   /// Books a slot on behalf of a walk-in or phone customer, who has no account
   /// of their own — hence [customerDetails] rather than a customer id. The
   /// server auto-confirms these.
@@ -145,6 +156,14 @@ abstract interface class BusinessAdminRepository {
   /// [status] must be one of `PAID`, `PENDING`, `FAILED`, `REFUNDED`.
   Future<Result<void>> updatePaymentStatus({
     required String paymentId,
+    required String accessToken,
+    required String status,
+  });
+
+  /// Settles several payments in one request. [status] takes the same values
+  /// as [updatePaymentStatus].
+  Future<Result<void>> bulkUpdatePaymentStatus({
+    required List<String> paymentIds,
     required String accessToken,
     required String status,
   });

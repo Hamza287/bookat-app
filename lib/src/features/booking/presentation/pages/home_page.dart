@@ -10,7 +10,6 @@ import '../../domain/entities/business.dart';
 import 'business_detail_page.dart';
 import '../providers/booking_providers.dart';
 import '../widgets/business_card.dart';
-import '../widgets/category_filter.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -110,8 +109,6 @@ class _HomePageState extends ConsumerState<HomePage> {
                       AppDimensions.spacing2xl,
                     ),
                     children: [
-                      const CategoryFilter(),
-                      const SizedBox(height: AppDimensions.spacing2xl),
                       Row(
                         children: [
                           Icon(
@@ -173,35 +170,6 @@ class _HomeLoadingSkeleton extends StatelessWidget {
         AppDimensions.spacing2xl,
       ),
       children: const [
-        // Mirrors the real category filter, which also scrolls horizontally —
-        // fixed-width placeholder chips can otherwise overflow on narrow
-        // screens.
-        SizedBox(
-          height: AppDimensions.categoryFilterHeight,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            physics: NeverScrollableScrollPhysics(),
-            child: Row(
-              children: [
-                AppShimmerBox(
-                  width: 86,
-                  height: AppDimensions.categoryFilterHeight,
-                ),
-                SizedBox(width: AppDimensions.spacingSm),
-                AppShimmerBox(
-                  width: 104,
-                  height: AppDimensions.categoryFilterHeight,
-                ),
-                SizedBox(width: AppDimensions.spacingSm),
-                AppShimmerBox(
-                  width: 92,
-                  height: AppDimensions.categoryFilterHeight,
-                ),
-              ],
-            ),
-          ),
-        ),
-        SizedBox(height: AppDimensions.spacing2xl),
         AppShimmerBox(width: 210, height: 28),
         SizedBox(height: AppDimensions.spacingLg),
         _BusinessCardSkeleton(),

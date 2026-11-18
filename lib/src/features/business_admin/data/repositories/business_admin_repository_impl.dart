@@ -3,6 +3,7 @@
 import 'package:dio/dio.dart';
 
 import '../../../../core/errors/failure.dart';
+import '../../../../core/network/network.dart';
 import '../../../booking/data/models/business_model.dart';
 import '../../../../core/utils/result.dart';
 import '../../../booking/domain/entities/business.dart';
@@ -52,7 +53,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       return Success(business);
     } on DioException catch (e) {
       return Fail(
-        ServerFailure(message: _settingsMessage(e.response?.statusCode)),
+        ServerFailure(message: apiErrorMessage(e) ?? _settingsMessage(e.response?.statusCode)),
       );
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
@@ -85,7 +86,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       return Success(business);
     } on DioException catch (e) {
       return Fail(
-        ServerFailure(message: _settingsMessage(e.response?.statusCode)),
+        ServerFailure(message: apiErrorMessage(e) ?? _settingsMessage(e.response?.statusCode)),
       );
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
@@ -113,7 +114,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       return Success(check);
     } on DioException catch (e) {
       return Fail(
-        ServerFailure(message: _settingsMessage(e.response?.statusCode)),
+        ServerFailure(message: apiErrorMessage(e) ?? _settingsMessage(e.response?.statusCode)),
       );
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
@@ -147,7 +148,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       return const Success(null);
     } on DioException catch (e) {
       return Fail(
-        ServerFailure(message: _settingsMessage(e.response?.statusCode)),
+        ServerFailure(message: apiErrorMessage(e) ?? _settingsMessage(e.response?.statusCode)),
       );
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
@@ -185,7 +186,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       );
       return Success(stats);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _statsMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _statsMessage(e.response?.statusCode)));
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
     } catch (_) {
@@ -209,7 +210,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       );
       return Success(bookings);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _bookingsMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _bookingsMessage(e.response?.statusCode)));
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
     } catch (_) {
@@ -231,7 +232,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       );
       return Success(resources);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _resourcesMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _resourcesMessage(e.response?.statusCode)));
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
     } catch (_) {
@@ -253,7 +254,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       );
       return Success(categories);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _resourcesMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _resourcesMessage(e.response?.statusCode)));
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
     } catch (_) {
@@ -279,7 +280,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       );
       return Success(category);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _resourcesMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _resourcesMessage(e.response?.statusCode)));
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
     } catch (_) {
@@ -305,7 +306,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       );
       return Success(resource);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _resourcesMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _resourcesMessage(e.response?.statusCode)));
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
     } catch (_) {
@@ -331,7 +332,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       );
       return Success(resource);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _resourcesMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _resourcesMessage(e.response?.statusCode)));
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
     } catch (_) {
@@ -353,7 +354,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       );
       return const Success<void>(null);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _resourcesMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _resourcesMessage(e.response?.statusCode)));
     } catch (_) {
       return const Fail(
         UnexpectedFailure(message: 'We could not delete this venue.'),
@@ -373,7 +374,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       );
       return Success(exceptions);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _resourcesMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _resourcesMessage(e.response?.statusCode)));
     } catch (_) {
       return const Fail(
         UnexpectedFailure(message: 'We could not load schedule exceptions.'),
@@ -405,7 +406,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       );
       return Success(exception);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _resourcesMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _resourcesMessage(e.response?.statusCode)));
     } catch (_) {
       return const Fail(
         UnexpectedFailure(message: 'We could not create this schedule exception.'),
@@ -425,12 +426,50 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       );
       return const Success<void>(null);
     } on DioException catch (e) {
-      return Fail(ServerFailure(message: _resourcesMessage(e.response?.statusCode)));
+      return Fail(ServerFailure(message: apiErrorMessage(e) ?? _resourcesMessage(e.response?.statusCode)));
     } catch (_) {
       return const Fail(
         UnexpectedFailure(message: 'We could not delete this exception.'),
       );
     }
+  }
+
+  @override
+  Future<Result<void>> updateBookingStatus({
+    required String bookingId,
+    required String accessToken,
+    required String status,
+  }) async {
+    try {
+      await _remoteDataSource.updateBookingStatus(
+        bookingId: bookingId,
+        accessToken: accessToken,
+        status: status,
+      );
+      return const Success<void>(null);
+    } on DioException catch (e) {
+      return Fail(
+        ServerFailure(
+          message: apiErrorMessage(e) ?? _bookingStatusMessage(e.response?.statusCode),
+        ),
+      );
+    } catch (_) {
+      return const Fail(
+        UnexpectedFailure(message: 'We could not update this booking.'),
+      );
+    }
+  }
+
+  String _bookingStatusMessage(int? statusCode) {
+    return switch (statusCode) {
+      400 => 'That status change was rejected.',
+      401 => 'Please sign in again to update this booking.',
+      403 => 'You do not have permission to change this booking.',
+      404 => 'That booking no longer exists.',
+      final code when code != null && code >= 500 =>
+        'The server is busy right now. Please try again shortly.',
+      _ => 'We could not update this booking.',
+    };
   }
 
   @override
@@ -525,7 +564,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       return Success(payments);
     } on DioException catch (e) {
       return Fail(
-        ServerFailure(message: _paymentsMessage(e.response?.statusCode)),
+        ServerFailure(message: apiErrorMessage(e) ?? _paymentsMessage(e.response?.statusCode)),
       );
     } on FormatException catch (e) {
       return Fail(ServerFailure(message: e.message));
@@ -551,11 +590,38 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       return const Success<void>(null);
     } on DioException catch (e) {
       return Fail(
-        ServerFailure(message: _paymentWriteMessage(e.response?.statusCode)),
+        ServerFailure(message: apiErrorMessage(e) ?? _paymentWriteMessage(e.response?.statusCode)),
       );
     } catch (_) {
       return const Fail(
         UnexpectedFailure(message: 'We could not update this payment.'),
+      );
+    }
+  }
+
+  @override
+  Future<Result<void>> bulkUpdatePaymentStatus({
+    required List<String> paymentIds,
+    required String accessToken,
+    required String status,
+  }) async {
+    try {
+      await _remoteDataSource.bulkUpdatePaymentStatus(
+        paymentIds: paymentIds,
+        accessToken: accessToken,
+        status: status,
+      );
+      return const Success<void>(null);
+    } on DioException catch (e) {
+      return Fail(
+        ServerFailure(
+          message: apiErrorMessage(e) ??
+              _paymentWriteMessage(e.response?.statusCode),
+        ),
+      );
+    } catch (_) {
+      return const Fail(
+        UnexpectedFailure(message: 'We could not update these payments.'),
       );
     }
   }
@@ -575,7 +641,7 @@ class BusinessAdminRepositoryImpl implements BusinessAdminRepository {
       return const Success<void>(null);
     } on DioException catch (e) {
       return Fail(
-        ServerFailure(message: _paymentWriteMessage(e.response?.statusCode)),
+        ServerFailure(message: apiErrorMessage(e) ?? _paymentWriteMessage(e.response?.statusCode)),
       );
     } catch (_) {
       return const Fail(

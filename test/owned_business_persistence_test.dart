@@ -138,6 +138,28 @@ class _FakeAuthRepository implements AuthRepository {
       throw UnimplementedError();
 
   @override
+  Future<Result<AuthSession?>> signInWithGoogle({
+    Role role = Role.customer,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> signOutOfGoogle() async {}
+
+  @override
+  Future<Result<AuthSession>> refreshSession({
+    required String refreshToken,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Result<void>> logout({
+    required String accessToken,
+    required String fcmToken,
+  }) =>
+      throw UnimplementedError();
+
+  @override
   Future<Result<PasswordResetRequest>> requestPasswordReset({
     required String emailOrUsername,
   }) =>

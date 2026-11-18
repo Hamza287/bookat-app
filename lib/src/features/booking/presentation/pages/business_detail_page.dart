@@ -228,13 +228,7 @@ class _BusinessDetailPageState extends ConsumerState<BusinessDetailPage> {
   }
 
   void _showMessage(String message, {bool isError = false}) {
-    final colors = context.appColors;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? colors.error : colors.primary,
-      ),
-    );
+    AppTopAlert.show(context, message, isError: isError);
   }
 
   Future<void> _showTopSuccess(String message) async {
@@ -1286,13 +1280,7 @@ class _ReviewsSection extends ConsumerWidget {
   void _openWriteReview(BuildContext context, WidgetRef ref) {
     final signedIn = ref.read(authControllerProvider).valueOrNull != null;
     if (!signedIn) {
-      final colors = context.appColors;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(AppStrings.signInToReview),
-          backgroundColor: colors.error,
-        ),
-      );
+      AppTopAlert.show(context, AppStrings.signInToReview, isError: true);
       return;
     }
 
@@ -1564,22 +1552,14 @@ class _WriteReviewSheetState extends ConsumerState<_WriteReviewSheet> {
       return;
     }
 
-    final colors = context.appColors;
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: colors.error),
-      );
+      AppTopAlert.show(context, error, isError: true);
       return;
     }
 
     ref.invalidate(businessReviewsProvider(widget.businessId));
     Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text(AppStrings.reviewSubmittedSuccess),
-        backgroundColor: colors.primary,
-      ),
-    );
+    AppTopAlert.show(context, AppStrings.reviewSubmittedSuccess);
   }
 
   @override
@@ -1927,8 +1907,7 @@ Set<String> _bookedTimesFor(
   final bookedTimes = <String>{};
 
   for (final booking in bookings) {
-    final status = booking.status.toUpperCase();
-    if (status == 'CANCELLED' || status == 'REJECTED_BY_SYSTEM') {
+    if (booking.isCancelled) {
       continue;
     }
     if (booking.resourceId != resourceId) {

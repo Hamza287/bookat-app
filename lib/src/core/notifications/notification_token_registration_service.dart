@@ -1,4 +1,9 @@
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+
+import '../config/app_config.dart';
 
 import '../network/network.dart';
 
@@ -15,17 +20,36 @@ class NotificationTokenRegistrationService {
       return;
     }
 
+    final body = {
+      'token': token,
+      'deviceType': _deviceType(),
+    };
+
     try {
-      await _apiClient.post(
+      debugPrint(
+        '[FCM] POST ${AppConfig.baseUrl}${ApiEndpoints.notificationToken}\n'
+        '[FCM] headers: {Authorization: Bearer ${accessToken.substring(0, 12)}...}\n'
+        // Encoded, so this is byte-for-byte what goes over the wire rather
+        // than Dart's map formatting.
+        '[FCM] body: ${jsonEncode(body)}',
+      );
+
+      final response = await _apiClient.post(
         ApiEndpoints.notificationToken,
         headers: {'Authorization': 'Bearer $accessToken'},
-        data: {
-          'token': token,
-          'deviceType': _deviceType(),
-        },
+        data: body,
+      );
+
+      debugPrint(
+        '[FCM] <- ${response.statusCode} ${response.data}',
+      );
+    } on DioException catch (error) {
+      debugPrint(
+        '[FCM] registration FAILED ${error.response?.statusCode} '
+        '${error.response?.data ?? error.message}',
       );
     } catch (error) {
-      debugPrint('Notification token registration failed: $error');
+      debugPrint('[FCM] registration failed: $error');
     }
   }
 

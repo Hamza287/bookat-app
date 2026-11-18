@@ -197,7 +197,7 @@ class _BookingCard extends StatelessWidget {
               label: booking.resourceName,
             ),
             const SizedBox(height: AppDimensions.spacingMd),
-            _BookingTimePill(label: _slotLabel(booking)),
+            _BookingTimePill(label: bookingSlotLabel(booking)),
             if (_isCancellable(booking)) ...[
               const SizedBox(height: AppDimensions.spacingLg),
               Divider(color: colors.border),
@@ -295,21 +295,15 @@ class _CancelBookingButton extends ConsumerWidget {
       return;
     }
 
-    final colors = context.appColors;
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: colors.error),
-      );
+      // The server explains why — e.g. "Cancellation not allowed within 1 hours
+      // of the booking time" — which is far more use than a generic refusal.
+      AppTopAlert.show(context, error, isError: true);
       return;
     }
 
     ref.invalidate(myBookingsProvider);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text(AppStrings.bookingCancelledSuccess),
-        backgroundColor: colors.primary,
-      ),
-    );
+    AppTopAlert.show(context, AppStrings.bookingCancelledSuccess);
   }
 }
 
@@ -429,30 +423,76 @@ class _BookingsLoadingSkeleton extends StatelessWidget {
   }
 }
 
-String _slotLabel(MyBooking booking) {
-  final starts = booking.bookedSlotStarts.map((slot) => slot.toLocal()).toList()
+/// The date and time(s) a booking covers, as one line.
+///
+/// Back-to-back slots read as a single stretch: booking 3–4 and 4–5 shows
+/// "3:00 PM - 5:00 PM", not "3:00 PM - 4:00 PM, 4:00 PM - 5:00 PM". Slots with
+/// a gap between them stay listed separately, since they really are two
+/// separate periods.
+String bookingSlotLabel(MyBooking booking) {
+  final ranges = _slotRanges(booking);
+
+  if (ranges.isEmpty) {
+    final slots = booking.slots;
+    return slots.isEmpty ? AppStrings.notSelected : slots.first;
+  }
+
+  final times = ranges
+      .map((range) => '${_timeLabel(range.start)} - ${_timeLabel(range.end)}')
+      .join(', ');
+
+  return '${_dateLabel(ranges.first.start)} - $times';
+}
+
+/// The booking's slots collapsed into as few continuous periods as possible.
+List<_SlotRange> _slotRanges(MyBooking booking) {
+  final duration = Duration(minutes: booking.durationMinutes);
+  final starts = booking.slots
+      .map(DateTime.tryParse)
+      .whereType<DateTime>()
+      .map((slot) => slot.toLocal())
+      .toList()
     ..sort();
 
-  if (starts.isEmpty) {
-    final slots = booking.slots;
-    if (slots.isEmpty) {
-      return AppStrings.notSelected;
+  // The API sends either a list of slots or a plain start/end pair. Given a
+  // pair there is nothing to merge — the booking already is one period, and
+  // its own end time is more trustworthy than the venue's default slot length.
+  if (starts.length < 2) {
+    final start = booking.startDate?.toLocal() ?? starts.firstOrNull;
+    if (start == null) {
+      return const [];
     }
-    return slots.first;
+    return [_SlotRange(start, booking.endDate?.toLocal() ?? start.add(duration))];
   }
 
-  final date = starts.first;
-  if (starts.length == 1) {
-    final end = starts.first.add(Duration(minutes: booking.durationMinutes));
-    return '${_dateLabel(date)} - ${_timeLabel(starts.first)} - ${_timeLabel(end)}';
+  final ranges = <_SlotRange>[];
+  var rangeStart = starts.first;
+  var rangeEnd = starts.first.add(duration);
+
+  for (final start in starts.skip(1)) {
+    // `!isAfter` rather than an equality check, so a duplicated or overlapping
+    // slot folds into the run instead of splitting it.
+    if (!start.isAfter(rangeEnd)) {
+      final candidate = start.add(duration);
+      if (candidate.isAfter(rangeEnd)) {
+        rangeEnd = candidate;
+      }
+      continue;
+    }
+
+    ranges.add(_SlotRange(rangeStart, rangeEnd));
+    rangeStart = start;
+    rangeEnd = start.add(duration);
   }
 
-  final ranges = starts.map((start) {
-    final end = start.add(Duration(minutes: booking.durationMinutes));
-    return '${_timeLabel(start)} - ${_timeLabel(end)}';
-  }).join(', ');
+  return [...ranges, _SlotRange(rangeStart, rangeEnd)];
+}
 
-  return '${_dateLabel(date)} - $ranges';
+class _SlotRange {
+  const _SlotRange(this.start, this.end);
+
+  final DateTime start;
+  final DateTime end;
 }
 
 String _dateLabel(DateTime date) {

@@ -54,6 +54,16 @@ class MyBooking extends Equatable {
     return '$currency $amount';
   }
 
+  /// A booking that was called off — by the customer, the venue, or the system
+  /// rejecting it.
+  ///
+  /// It holds no slot and earns nothing, so it must be left out of availability
+  /// and out of revenue totals alike.
+  bool get isCancelled {
+    final value = status.toUpperCase();
+    return value == 'CANCELLED' || value == 'REJECTED_BY_SYSTEM';
+  }
+
   String get paymentStatus => _string(['paymentStatus']);
 
   String get paymentMethod => _string(['paymentMethod']);

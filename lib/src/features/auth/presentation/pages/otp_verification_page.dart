@@ -48,10 +48,7 @@ class _OtpVerificationPageState extends ConsumerState<OtpVerificationPage> {
     }
 
     if (error != null) {
-      final colors = context.appColors;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: colors.error),
-      );
+      AppTopAlert.show(context, error, isError: true);
       return;
     }
 

@@ -4,6 +4,7 @@ import '../models/app_user_model.dart';
 import '../models/auth_session_model.dart';
 import '../models/otp_verification_result_model.dart';
 import '../models/password_reset_model.dart';
+import '../models/refreshed_tokens_model.dart';
 import 'auth_remote_data_source.dart';
 
 class DioAuthRemoteDataSource implements AuthRemoteDataSource {
@@ -83,6 +84,27 @@ class DioAuthRemoteDataSource implements AuthRemoteDataSource {
   }
 
   @override
+  Future<AuthSessionModel> signInWithGoogle({
+    required String idToken,
+    Role role = Role.customer,
+  }) async {
+    final response = await _apiClient.post(
+      ApiEndpoints.authGoogle,
+      data: {
+        'idToken': idToken,
+        'role': role.value,
+      },
+    );
+
+    final payload = response.data;
+    if (payload is! Map<String, dynamic>) {
+      throw const FormatException('Invalid Google sign-in response.');
+    }
+
+    return AuthSessionModel.fromJson(payload);
+  }
+
+  @override
   Future<PasswordResetRequestModel> requestPasswordReset({
     required String emailOrUsername,
   }) async {
@@ -120,5 +142,34 @@ class DioAuthRemoteDataSource implements AuthRemoteDataSource {
     }
 
     return PasswordResetConfirmationModel.fromJson(payload);
+  }
+
+  @override
+  Future<RefreshedTokensModel> refreshSession({
+    required String refreshToken,
+  }) async {
+    final response = await _apiClient.post(
+      ApiEndpoints.authRefresh,
+      data: {'refreshToken': refreshToken},
+    );
+
+    final payload = response.data;
+    if (payload is! Map<String, dynamic>) {
+      throw const FormatException('Invalid refresh response.');
+    }
+
+    return RefreshedTokensModel.fromJson(payload);
+  }
+
+  @override
+  Future<void> logout({
+    required String accessToken,
+    required String fcmToken,
+  }) async {
+    await _apiClient.post(
+      ApiEndpoints.authLogout,
+      headers: {'Authorization': 'Bearer $accessToken'},
+      data: {'fcmToken': fcmToken},
+    );
   }
 }

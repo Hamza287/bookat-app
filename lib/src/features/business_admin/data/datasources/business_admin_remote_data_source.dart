@@ -107,6 +107,12 @@ abstract interface class BusinessAdminRemoteDataSource {
     required String accessToken,
   });
 
+  Future<void> updateBookingStatus({
+    required String bookingId,
+    required String accessToken,
+    required String status,
+  });
+
   Future<void> createManualBooking({
     required String accessToken,
     required Map<String, dynamic> body,
@@ -122,6 +128,14 @@ abstract interface class BusinessAdminRemoteDataSource {
 
   Future<void> updatePaymentStatus({
     required String paymentId,
+    required String accessToken,
+    required String status,
+  });
+
+  /// Settles several payments at once. One request rather than one per row,
+  /// so a stack of cash takings can be cleared in a single call.
+  Future<void> bulkUpdatePaymentStatus({
+    required List<String> paymentIds,
     required String accessToken,
     required String status,
   });

@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/constants.dart';
 import '../core/enums/app_enums.dart';
+import '../core/utils/app_resume_detector.dart';
 import 'dependency_providers.dart';
 import '../features/auth/presentation/pages/login_page.dart';
 import '../features/auth/presentation/providers/auth_providers.dart';
@@ -12,11 +15,55 @@ import '../shared/widgets/widgets.dart';
 import 'app_theme.dart';
 import 'theme_mode_provider.dart';
 
-class BookatApp extends ConsumerWidget {
+class BookatApp extends ConsumerStatefulWidget {
   const BookatApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<BookatApp> createState() => _BookatAppState();
+}
+
+class _BookatAppState extends ConsumerState<BookatApp>
+    with WidgetsBindingObserver {
+  final _resumeDetector = AppResumeDetector();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshSessionIfNeeded();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Renew a spent access token when the app comes back to the foreground.
+  ///
+  /// An app left in the background overnight wakes up with a dead token, and
+  /// the first thing the user taps would otherwise fail. Refreshing here means
+  /// they never see that.
+  ///
+  /// Gated on a genuine return from the background — see [AppResumeDetector] —
+  /// so pulling down the notification shade does not re-check the token.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_resumeDetector.didReturnFromBackground(state)) {
+      _refreshSessionIfNeeded();
+    }
+  }
+
+  void _refreshSessionIfNeeded() {
+    // Fire and forget: nothing on screen waits for this, and the interceptor
+    // still covers any request that races ahead of it.
+    unawaited(
+      ref.read(authControllerProvider.notifier).ensureFreshSession(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
     final themeMode = ref.watch(themeModeProvider);
     void registerDeviceToken(String? token) {
